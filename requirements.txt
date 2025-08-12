@@ -1,0 +1,51 @@
+# Core
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+
+# Pydantic with settings
+pydantic==2.5.0
+pydantic-settings==2.1.0
+email-validator==2.1.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+psycopg2-binary==2.9.9  # For PostgreSQL
+pymysql==1.1.0  # For MySQL
+
+# AI & TTS
+openai==1.3.5
+edge-tts==6.1.9
+elevenlabs==0.2.26
+pygame==2.5.2
+
+# OBS Integration
+obs-websocket-py==1.0
+websocket-client==1.6.4
+websockets==12.0
+
+# Platform Integrations
+requests==2.31.0
+beautifulsoup4==4.12.2
+selenium==4.15.2  # For web scraping
+
+# Utilities
+cryptography==41.0.7
+prometheus-client==0.19.0
+redis==5.0.1  # Optional
+aiofiles==23.2.1
+psutil==5.9.6
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.1
+
+# Development
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.0

@@ -1,0 +1,640 @@
+# app/services/facebook_live_service.py - Updated for Real Connection
+"""
+Facebook Live Service with Real API Integration
+รองรับการเชื่อมต่อ Facebook จริงและ Mock Mode
+"""
+import os
+import requests
+import secrets
+import logging
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+import asyncio
+
+logger = logging.getLogger(__name__)
+
+class FacebookLiveService:
+    def __init__(self):
+        # Load configuration from environment
+        self.app_id = os.getenv("FACEBOOK_APP_ID", "")
+        self.app_secret = os.getenv("FACEBOOK_APP_SECRET", "")
+        self.redirect_uri = os.getenv("FACEBOOK_REDIRECT_URI", "http://localhost:8000/api/facebook/callback")
+        self.api_version = os.getenv("FACEBOOK_API_VERSION", "v18.0")
+        
+        # Determine if using real or mock mode
+        self.mock_mode = os.getenv("FACEBOOK_MOCK_MODE", "true").lower() == "true"
+        
+        # If no credentials, force mock mode
+        if not self.app_id or not self.app_secret:
+            self.mock_mode = True
+            logger.warning("Facebook credentials not found - using mock mode")
+        else:
+            logger.info(f"Facebook credentials found - mock mode: {self.mock_mode}")
+        
+        # State management
+        self.access_token = None
+        self.user_info = None
+        self.pages = []
+        self.selected_page = None
+        self.live_video_id = None
+        self.current_live_video = None
+        self.is_connected = False
+        
+        # Mock data for testing
+        self._init_mock_data()
+        
+        logger.info(f"Facebook Service initialized - Mock Mode: {self.mock_mode}")
+    
+    def _init_mock_data(self):
+        """Initialize mock data for testing"""
+        self.mock_user = {
+            "id": "mock_user_123456789",
+            "name": "Demo User (Mock)",
+            "email": "demo@ai-live-commerce.test"
+        }
+        
+        self.mock_pages = [
+            {
+                "id": "mock_page_123456",
+                "name": "AI Shop Demo (Mock)",
+                "access_token": "mock_page_token_123456",
+                "category": "Shopping & Retail",
+                "fan_count": 1234,
+                "tasks": ["MANAGE", "CREATE_CONTENT"],
+                "mock_mode": True
+            },
+            {
+                "id": "mock_page_789012",
+                "name": "Live Commerce Store (Mock)",
+                "access_token": "mock_page_token_789012",
+                "category": "E-commerce",
+                "fan_count": 2856,
+                "tasks": ["MANAGE", "CREATE_CONTENT"],
+                "mock_mode": True
+            }
+        ]
+    
+    async def connect_facebook(self) -> Dict[str, Any]:
+        """Connect to Facebook - Real or Mock Mode"""
+        try:
+            if self.mock_mode:
+                logger.info("Using Facebook Mock Mode")
+                return await self._mock_connect()
+            
+            # Real Facebook connection
+            logger.info("Initiating Real Facebook Connection")
+            state = secrets.token_urlsafe(32)
+            
+            # Facebook OAuth URL with proper scopes
+            scopes = [
+                "pages_manage_posts",
+                "pages_read_engagement", 
+                "publish_video",
+                "pages_show_list",
+                "pages_manage_metadata",
+                "pages_read_user_content"
+            ]
+            
+            login_url = (
+                f"https://www.facebook.com/{self.api_version}/dialog/oauth?"
+                f"client_id={self.app_id}&"
+                f"redirect_uri={self.redirect_uri}&"
+                f"scope={','.join(scopes)}&"
+                f"response_type=code&"
+                f"state={state}"
+            )
+            
+            return {
+                "success": True,
+                "requires_auth": True,
+                "login_url": login_url,
+                "state": state,
+                "mock_mode": False,
+                "message": "Please complete OAuth authentication",
+                "instructions": "Click the link to authenticate with Facebook"
+            }
+            
+        except Exception as e:
+            logger.error(f"Facebook connect error: {str(e)}")
+            # Fallback to mock mode on error
+            logger.warning("Falling back to mock mode due to error")
+            self.mock_mode = True
+            return await self._mock_connect()
+    
+    async def handle_oauth_callback(self, code: str, state: str) -> Dict[str, Any]:
+        """Handle Facebook OAuth callback"""
+        try:
+            if self.mock_mode:
+                return await self._mock_connect()
+            
+            logger.info(f"Processing Facebook OAuth callback with code: {code[:10]}...")
+            
+            # Exchange authorization code for access token
+            token_url = f"https://graph.facebook.com/{self.api_version}/oauth/access_token"
+            params = {
+                "client_id": self.app_id,
+                "client_secret": self.app_secret,
+                "redirect_uri": self.redirect_uri,
+                "code": code
+            }
+            
+            response = requests.get(token_url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            token_data = response.json()
+            self.access_token = token_data.get("access_token")
+            
+            if not self.access_token:
+                raise Exception("Failed to obtain access token from Facebook")
+            
+            logger.info("Successfully obtained Facebook access token")
+            
+            # Get user information
+            user_response = requests.get(
+                f"https://graph.facebook.com/{self.api_version}/me",
+                params={
+                    "access_token": self.access_token,
+                    "fields": "id,name,email"
+                },
+                timeout=10
+            )
+            user_response.raise_for_status()
+            self.user_info = user_response.json()
+            
+            logger.info(f"Retrieved user info: {self.user_info.get('name')}")
+            
+            # Mark as connected
+            self.is_connected = True
+            
+            # Get user pages immediately
+            pages_result = await self.get_user_pages()
+            
+            return {
+                "success": True,
+                "mock_mode": False,
+                "user_info": self.user_info,
+                "pages": pages_result.get("pages", []),
+                "message": f"Successfully connected to Facebook as {self.user_info.get('name')}",
+                "connection_time": datetime.now().isoformat()
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Facebook API request error: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Facebook API error: {str(e)}",
+                "fallback_to_mock": True
+            }
+        except Exception as e:
+            logger.error(f"OAuth callback error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "fallback_to_mock": True
+            }
+    
+    async def _mock_connect(self) -> Dict[str, Any]:
+        """Mock Facebook connection for development/testing"""
+        try:
+            # Simulate connection delay
+            await asyncio.sleep(0.5)
+            
+            self.is_connected = True
+            self.access_token = "mock_user_access_token_" + secrets.token_hex(16)
+            self.user_info = self.mock_user.copy()
+            self.pages = self.mock_pages.copy()
+            
+            logger.info(f"Mock Facebook connection successful: {self.user_info['name']}")
+            
+            return {
+                "success": True,
+                "mock_mode": True,
+                "user_info": self.user_info,
+                "pages": self.pages,
+                "message": "Connected to Facebook (Mock Mode)",
+                "connection_time": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Mock connection error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "mock_mode": True
+            }
+    
+    def get_connection_status(self) -> Dict[str, Any]:
+        """Get current connection status"""
+        return {
+            "connected": self.is_connected,
+            "mock_mode": self.mock_mode,
+            "user_info": self.user_info,
+            "pages_count": len(self.pages),
+            "selected_page": self.selected_page.get("name") if self.selected_page else None,
+            "live_video_active": self.live_video_id is not None,
+            "connection_time": datetime.now().isoformat(),
+            "app_configured": bool(self.app_id and self.app_secret)
+        }
+    
+    async def get_user_pages(self) -> Dict[str, Any]:
+        """Get user's Facebook pages"""
+        try:
+            if not self.is_connected:
+                if self.mock_mode:
+                    await self._mock_connect()
+                else:
+                    raise Exception("Not connected to Facebook")
+            
+            if self.mock_mode:
+                return {
+                    "success": True,
+                    "pages": self.pages,
+                    "total_pages": len(self.pages),
+                    "mock_mode": True
+                }
+            
+            # Real Facebook API call
+            if not self.access_token:
+                raise Exception("No access token available")
+            
+            logger.info("Fetching user pages from Facebook API")
+            
+            response = requests.get(
+                f"https://graph.facebook.com/{self.api_version}/me/accounts",
+                params={
+                    "access_token": self.access_token,
+                    "fields": "id,name,access_token,category,fan_count,tasks"
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            pages_data = response.json()
+            all_pages = pages_data.get("data", [])
+            
+            # Filter pages with required permissions
+            self.pages = [
+                page for page in all_pages
+                if "MANAGE" in page.get("tasks", []) and "CREATE_CONTENT" in page.get("tasks", [])
+            ]
+            
+            logger.info(f"Retrieved {len(self.pages)} manageable pages out of {len(all_pages)} total")
+            
+            return {
+                "success": True,
+                "pages": self.pages,
+                "total_pages": len(self.pages),
+                "mock_mode": False
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Facebook API error getting pages: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Facebook API error: {str(e)}",
+                "pages": []
+            }
+        except Exception as e:
+            logger.error(f"Get pages error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "pages": []
+            }
+    
+    async def select_page(self, page_id: str, page_access_token: str) -> Dict[str, Any]:
+        """Select a Facebook page for operations"""
+        try:
+            # Find the page
+            selected_page = None
+            for page in self.pages:
+                if page["id"] == page_id:
+                    selected_page = page
+                    break
+            
+            if not selected_page:
+                raise Exception(f"Page {page_id} not found in available pages")
+            
+            self.selected_page = selected_page
+            logger.info(f"Selected page: {selected_page['name']} ({'Mock' if self.mock_mode else 'Real'})")
+            
+            return {
+                "success": True,
+                "selected_page": selected_page,
+                "mock_mode": self.mock_mode,
+                "message": f"Selected page: {selected_page['name']}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Select page error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def create_live_video(self, title: str, description: str = "") -> Dict[str, Any]:
+        """Create Facebook Live Video"""
+        try:
+            if not self.selected_page:
+                raise Exception("No page selected. Please select a page first.")
+            
+            if self.mock_mode:
+                return await self._mock_create_live_video(title, description)
+            
+            # Real Facebook Live Video creation
+            page_access_token = self.selected_page["access_token"]
+            page_id = self.selected_page["id"]
+            
+            logger.info(f"Creating live video on page {self.selected_page['name']}")
+            
+            # Create live video
+            response = requests.post(
+                f"https://graph.facebook.com/{self.api_version}/{page_id}/live_videos",
+                data={
+                    "title": title,
+                    "description": description,
+                    "status": "LIVE_NOW",
+                    "access_token": page_access_token
+                },
+                timeout=15
+            )
+            response.raise_for_status()
+            
+            live_video_data = response.json()
+            self.live_video_id = live_video_data["id"]
+            self.current_live_video = live_video_data
+            
+            logger.info(f"Successfully created Facebook Live Video: {live_video_data['id']}")
+            
+            return {
+                "success": True,
+                "live_video": live_video_data,
+                "mock_mode": False,
+                "message": "Live video created successfully on Facebook"
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Facebook API error creating live video: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Facebook API error: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"Create live video error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _mock_create_live_video(self, title: str, description: str) -> Dict[str, Any]:
+        """Mock live video creation"""
+        try:
+            live_id = f"mock_live_{secrets.token_hex(8)}"
+            
+            live_video_data = {
+                "id": live_id,
+                "title": title,
+                "description": description,
+                "status": "LIVE",
+                "permalink_url": f"https://facebook.com/{self.selected_page['id']}/videos/{live_id}",
+                "stream_url": f"rtmps://live-api-s.facebook.com:443/rtmp/{live_id}",
+                "stream_key": f"mock_stream_key_{secrets.token_hex(16)}",
+                "mock_mode": True,
+                "created_time": datetime.now().isoformat(),
+                "live_views": 0,
+                "page_id": self.selected_page["id"],
+                "page_name": self.selected_page["name"]
+            }
+            
+            self.live_video_id = live_video_data["id"]
+            self.current_live_video = live_video_data
+            
+            logger.info(f"Mock live video created: {live_id}")
+            
+            return {
+                "success": True,
+                "live_video": live_video_data,
+                "mock_mode": True,
+                "message": "Live video created successfully (Mock Mode)"
+            }
+            
+        except Exception as e:
+            logger.error(f"Mock create live video error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def end_live_video(self) -> Dict[str, Any]:
+        """End current live video"""
+        try:
+            if not self.live_video_id:
+                raise Exception("No active live video to end")
+            
+            if self.mock_mode:
+                return await self._mock_end_live_video()
+            
+            # Real Facebook API call
+            page_access_token = self.selected_page["access_token"]
+            
+            logger.info(f"Ending live video: {self.live_video_id}")
+            
+            response = requests.post(
+                f"https://graph.facebook.com/{self.api_version}/{self.live_video_id}",
+                data={
+                    "end_live_video": True,
+                    "access_token": page_access_token
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            self.live_video_id = None
+            self.current_live_video = None
+            
+            logger.info("Live video ended successfully")
+            
+            return {
+                "success": True,
+                "mock_mode": False,
+                "message": "Live video ended successfully"
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Facebook API error ending live video: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Facebook API error: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"End live video error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _mock_end_live_video(self) -> Dict[str, Any]:
+        """Mock end live video"""
+        old_video = self.current_live_video
+        self.live_video_id = None
+        self.current_live_video = None
+        
+        return {
+            "success": True,
+            "mock_mode": True,
+            "message": "Live video ended successfully (Mock Mode)",
+            "ended_video": old_video
+        }
+    
+    async def get_live_comments(self, limit: int = 25) -> Dict[str, Any]:
+        """Get live video comments"""
+        try:
+            if not self.live_video_id:
+                return {"success": True, "comments": [], "mock_mode": self.mock_mode}
+            
+            if self.mock_mode:
+                return await self._mock_get_comments()
+            
+            # Real Facebook API
+            page_access_token = self.selected_page["access_token"]
+            
+            response = requests.get(
+                f"https://graph.facebook.com/{self.api_version}/{self.live_video_id}/comments",
+                params={
+                    "access_token": page_access_token,
+                    "fields": "id,message,from,created_time",
+                    "limit": limit,
+                    "order": "reverse_chronological"
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            comments_data = response.json()
+            comments = comments_data.get("data", [])
+            
+            return {
+                "success": True,
+                "comments": comments,
+                "mock_mode": False,
+                "total_comments": len(comments)
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Facebook API error getting comments: {str(e)}")
+            return {"success": True, "comments": [], "error": str(e)}
+        except Exception as e:
+            logger.error(f"Get comments error: {str(e)}")
+            return {"success": True, "comments": [], "error": str(e)}
+    
+    async def _mock_get_comments(self) -> Dict[str, Any]:
+        """Generate mock comments"""
+        import random
+        
+        # 30% chance of returning new comments
+        if random.random() > 0.7:
+            mock_comments = [
+                {
+                    "id": f"mock_comment_{secrets.token_hex(8)}",
+                    "message": "สินค้าดีมาก ราคาเท่าไหร่ครับ?",
+                    "from": {"id": "user_001", "name": "ลูกค้า A"},
+                    "created_time": datetime.now().isoformat()
+                },
+                {
+                    "id": f"mock_comment_{secrets.token_hex(8)}",
+                    "message": "มีส่วนลดไหมคะ?",
+                    "from": {"id": "user_002", "name": "ลูกค้า B"},
+                    "created_time": datetime.now().isoformat()
+                },
+                {
+                    "id": f"mock_comment_{secrets.token_hex(8)}",
+                    "message": "สนใจสินค้านี้มากเลย",
+                    "from": {"id": "user_003", "name": "ลูกค้า C"},
+                    "created_time": datetime.now().isoformat()
+                },
+                {
+                    "id": f"mock_comment_{secrets.token_hex(8)}",
+                    "message": "จัดส่งทั่วไทยไหมครับ?",
+                    "from": {"id": "user_004", "name": "ลูกค้า D"},
+                    "created_time": datetime.now().isoformat()
+                }
+            ]
+            
+            # Return 1-2 random comments
+            num_comments = random.randint(1, 2)
+            selected_comments = random.sample(mock_comments, num_comments)
+            
+            return {
+                "success": True,
+                "comments": selected_comments,
+                "mock_mode": True
+            }
+        
+        return {"success": True, "comments": [], "mock_mode": True}
+    
+    async def post_comment(self, message: str) -> Dict[str, Any]:
+        """Post comment to live video"""
+        try:
+            if not self.live_video_id:
+                raise Exception("No active live video")
+            
+            if self.mock_mode:
+                return {
+                    "success": True,
+                    "comment_id": f"mock_comment_{secrets.token_hex(8)}",
+                    "message": "Comment posted successfully (Mock Mode)",
+                    "mock_mode": True
+                }
+            
+            # Real Facebook API
+            page_access_token = self.selected_page["access_token"]
+            
+            response = requests.post(
+                f"https://graph.facebook.com/{self.api_version}/{self.live_video_id}/comments",
+                data={
+                    "message": message,
+                    "access_token": page_access_token
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            logger.info(f"Posted comment to live video: {message[:50]}...")
+            
+            return {
+                "success": True,
+                "comment_id": result.get("id"),
+                "message": "Comment posted successfully",
+                "mock_mode": False
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Facebook API error posting comment: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Facebook API error: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"Post comment error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get service health status"""
+        return {
+            "status": "healthy",
+            "mock_mode": self.mock_mode,
+            "connected": self.is_connected,
+            "facebook_app_configured": bool(self.app_id and self.app_secret),
+            "selected_page": self.selected_page.get("name") if self.selected_page else None,
+            "live_video_active": self.live_video_id is not None,
+            "api_version": self.api_version,
+            "timestamp": datetime.now().isoformat()
+        }
+
+# Global service instance
+facebook_service = FacebookLiveService()

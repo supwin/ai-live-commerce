@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Audio files (ถ้าไม่ต้องการ commit)
+*.mp3
+*.wav
+audio_cache/
+audio_output/
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+.tmp/
