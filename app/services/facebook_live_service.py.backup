@@ -88,7 +88,9 @@ class FacebookLiveService:
             # Facebook OAuth URL with proper scopes
             scopes = [
                 "email",
-                "public_profile"
+                "public_profile",
+                "user_posts",
+                "user_photos"
             ]
             
             login_url = (
