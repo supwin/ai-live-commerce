@@ -1,3 +1,5 @@
+#app/core/database.py
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -28,3 +30,16 @@ def get_db() -> Generator:
         yield db
     finally:
         db.close()
+
+# เพิ่มฟังก์ชันใหม่สำหรับ Dashboard
+def get_db_session():
+    """Get database session for background tasks"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def create_tables():
+    """Create all database tables"""
+    Base.metadata.create_all(bind=engine)

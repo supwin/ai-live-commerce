@@ -102,6 +102,33 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM: Optional[EmailStr] = None
+
+    FACEBOOK_REDIRECT_URI: str = "http://localhost:8000/api/facebook/callback"
+    FACEBOOK_API_VERSION: str = "v18.0"
+    FACEBOOK_MOCK_MODE: str = "false"
+    FACEBOOK_PAGE_ID: str = ""
+    FACEBOOK_PAGE_ACCESS_TOKEN: str = ""
+    
+    # เพิ่ม TTS Settings
+    TTS_DEFAULT_LANGUAGE: str = "th"
+    TTS_DEFAULT_PROVIDER: str = "gtts"
+    GOOGLE_TTS_API_KEY: str = ""
+    
+    # เพิ่ม Live Settings
+    LIVE_DEFAULT_BITRATE: str = "4000000"
+    LIVE_DEFAULT_RESOLUTION: str = "720p"
+    LIVE_DEFAULT_FPS: str = "30"
+    LIVE_MAX_DURATION: str = "3600"
+    
+    # เพิ่ม Avatar Settings
+    AVATAR_DEFAULT_VOICE: str = "th"
+    AVATAR_DEFAULT_SPEED: str = "1.0"
+    AVATAR_CACHE_SIZE: str = "100"
+    
+    # เพิ่ม Other Settings
+    LOG_FILE: str = "logs/app.log"
+    ALLOWED_HOSTS: str = "localhost,127.0.0.1"
+    RELOAD: str = "true"
     
     @field_validator("SECRET_KEY")
     @classmethod
@@ -118,11 +145,12 @@ class Settings(BaseSettings):
         path = Path(v)
         path.mkdir(parents=True, exist_ok=True)
         return path
-    
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "allow"  # เพิ่มบรรทัดนี้ เพื่อ allow extra fields
 
 @lru_cache()
 def get_settings() -> Settings:

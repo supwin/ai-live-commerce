@@ -1,38 +1,68 @@
-# Python
+# ============================================================================
+# Python / FastAPI
+# ============================================================================
+
+# Virtual Environments
+venv/
+venv_complete/
+.venv/
+env/
+ENV/
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# IDE
-.vscode/settings.json
-.idea/
+# ============================================================================
+# Project Specific
+# ============================================================================
 
-# Audio files (ถ้าไม่ต้องการ commit)
-*.mp3
-*.wav
-audio_cache/
-audio_output/
-
-# Environment variables
-.env
-.env.local
-
-# Logs
-*.log
-logs/
-
-# Database
+# Database file
 *.db
 *.sqlite3
+ai_live_commerce.db
 
-# Temporary files
-tmp/
-temp/
-.tmp/
+# Logs and Uploads
+logs/
+uploads/
+frontend/uploads/
+frontend/static/audio/
+backups/
+
+# Secrets (NEVER commit .env files)
+.env
+
+# Caches from dev tools
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+
+# IDE / Editor specific
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db

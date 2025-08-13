@@ -1,20 +1,48 @@
-# app/models/__init__.py
-"""
-Models package initialization
-Import all models to ensure they're registered with SQLAlchemy
-"""
+# Import Base first
+from .base import Base
 
-from app.models.base import BaseModel
-from app.models.user import User
-from app.models.product import Product
-from app.models.chat import ChatMessage, ChatSession
-from app.models.script import ProductScript
+# Import all working models
+from .product import Product
+from .script import (
+    Script,
+    MP3File, 
+    Video, 
+    ScriptPersona, 
+    VoicePersona
+)
+from .chat import ChatMessage, ChatSession
+from .script import Script, MP3File, Video, ScriptPersona, VoicePersona
 
-__all__ = [
-    'BaseModel',
-    'User', 
-    'Product',
-    'ChatMessage',
-    'ChatSession',
-    'ProductScript'
-]
+# Import User if fixed
+try:
+    from .user import User
+    user_available = True
+except ImportError:
+    user_available = False
+
+# Make models available
+if user_available:
+    __all__ = [
+        "Base",
+        "User",
+        "Product",
+        "Script",
+        "MP3File",
+        "Video",
+        "ScriptPersona",
+        "VoicePersona",
+        "ChatMessage",
+        "ChatSession"
+    ]
+else:
+    __all__ = [
+        "Base",
+        "Product",
+        "Script",
+        "MP3File",
+        "Video",
+        "ScriptPersona",
+        "VoicePersona",
+        "ChatMessage",
+        "ChatSession"
+    ]
