@@ -15,9 +15,9 @@ class ScriptType(enum.Enum):
     AI_GENERATED = "ai_generated"
 
 class ScriptStatus(enum.Enum):
-    DRAFT = "draft"
-    APPROVED = "approved"
-    ARCHIVED = "archived"
+    DRAFT = "DRAFT"
+    APPROVED = "APPROVED"
+    ARCHIVED = "ARCHIVED"
 
 class MP3Status(enum.Enum):
     PROCESSING = "processing"
@@ -58,7 +58,8 @@ class Script(Base):
     duration_estimate = Column(Integer)
     
     # Status and Permissions
-    status = Column(Enum(ScriptStatus), default=ScriptStatus.DRAFT)
+    # status = Column(Enum(ScriptStatus), default=ScriptStatus.DRAFT)
+    status = Column(String(20), default="DRAFT") 
     has_mp3 = Column(Boolean, default=False)
     is_editable = Column(Boolean, default=True)
     
@@ -83,7 +84,15 @@ class Script(Base):
     def can_edit(self):
         """Check if script can be edited (no MP3 files)"""
         return not self.has_mp3
-    
+
+    @property
+    def status_enum(self):
+        """Get status as enum"""
+        try:
+            return ScriptStatus(self.status)
+        except ValueError:
+            return ScriptStatus.DRAFT    
+
     @property
     def persona_name(self):
         """Get persona name if exists"""
@@ -118,7 +127,7 @@ class Script(Base):
             "call_to_action": self.call_to_action,
             "duration_estimate": self.duration_estimate,
             "estimated_speech_duration": self.estimated_speech_duration,
-            "status": self.status.value,
+            "status": self.status,
             "has_mp3": self.has_mp3,
             "is_editable": self.is_editable,
             "can_edit": self.can_edit,
@@ -191,7 +200,7 @@ class MP3File(Base):
             "tts_provider": self.tts_provider,
             "voice_settings": self.voice_settings or {},
             "quality_rating": self.quality_rating,
-            "status": self.status.value,
+            "status": self.status,
             "generation_time": float(self.generation_time) if self.generation_time else None,
             "error_message": self.error_message,
             "created_at": self.created_at.isoformat() if self.created_at else None
@@ -254,7 +263,7 @@ class Video(Base):
             "resolution": self.resolution,
             "video_type": self.video_type.value,
             "thumbnail_path": self.thumbnail_path,
-            "status": self.status.value,
+            "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 

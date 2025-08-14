@@ -107,7 +107,7 @@ class Product(Base):
             "sku": self.sku,
             "name": self.name,
             "description": self.description,
-            "price": float(self.price) if self.price else None,
+            "price": float(self.price) if self.price else 0.0,
             "original_price": float(self.original_price) if self.original_price else None,
             "discount_percentage": self.discount_percentage,
             "sale_price": self.sale_price,

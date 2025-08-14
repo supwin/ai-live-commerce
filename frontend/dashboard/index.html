@@ -919,7 +919,7 @@
             }
 
             try {
-                showAlert('Generating AI scripts with emotional markup...', 'info');
+                showAlert('กำลังสร้าง AI scripts พร้อม emotional markup...', 'info');
                 closeModal();
 
                 const response = await fetch('/api/v1/dashboard/scripts/generate-ai', {
@@ -934,11 +934,17 @@
                 });
 
                 if (response.ok) {
-                    const scripts = await response.json();
-                    showAlert(`Generated ${scripts.length} AI scripts with emotional markup successfully!`, 'success');
+                    const result = await response.json();
+                    showAlert(`สร้าง ${result.scripts.length} AI scripts พร้อม emotional markup สำเร็จ!`, 'success');
 
-                    // Switch to scripts section and show the new scripts
+                    // อัพเดทข้อมูล scripts ใน memory
+                    currentScripts = result.scripts;
+
+                    // Switch to scripts section และแสดงผล
                     switchToScriptsSection(productId);
+
+                    // รีโหลด products stats ด้วย
+                    await loadDashboardStats();
                 } else {
                     const errorData = await response.json();
                     throw new Error(errorData.detail || 'Failed to generate scripts');
@@ -950,7 +956,7 @@
             }
         }
 
-        function switchToScriptsSection(productId) {
+        async function switchToScriptsSection(productId) {
             // Update navigation
             document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
             document.querySelector('[data-section="scripts"]').classList.add('active');
@@ -959,23 +965,54 @@
             document.querySelectorAll('.content-section').forEach(section => section.classList.remove('active'));
             document.getElementById('scripts-section').classList.add('active');
 
-            // Set product filter and load scripts
+            // Set product filter และโหลด scripts ใหม่จาก API
             document.getElementById('scripts-product-filter').value = productId;
-            loadScripts();
+
+            // รีโหลด scripts จาก API เพื่อให้แน่ใจว่าได้ข้อมูลล่าสุด
+            await loadScripts();
         }
 
         // Scripts Management
         async function loadProductsForScriptsFilter() {
             try {
+                console.log('🔄 Loading products for scripts filter...');
+
                 const response = await fetch('/api/v1/dashboard/products');
-                const products = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                console.log('📦 Products API Response:', data);
+
+                // ดึง products array จาก response object
+                const products = data.products || [];
+                console.log('📋 Products array:', products);
 
                 const select = document.getElementById('scripts-product-filter');
-                select.innerHTML = '<option value="">Select Product</option>' +
-                    products.map(product => `<option value="${product.id}">${escapeHtml(product.name)} (${escapeHtml(product.sku)})</option>`).join('');
 
+                if (!select) {
+                    console.error('❌ scripts-product-filter element not found');
+                    return;
+                }
+
+                select.innerHTML = '<option value="">Select Product</option>' +
+                    products.map(product =>
+                        `<option value="${product.id}">${escapeHtml(product.name)} (${escapeHtml(product.sku)})</option>`
+                    ).join('');
+
+                console.log(`✅ Loaded ${products.length} products for filter`);
             } catch (error) {
-                console.error('Error loading products for filter:', error);
+                console.error('❌ Error loading products for filter:', error);
+
+                // แสดง error ใน select dropdown
+                const select = document.getElementById('scripts-product-filter');
+                if (select) {
+                    select.innerHTML = '<option value="">Error loading products</option>';
+                }
+
+                showAlert('ไม่สามารถโหลดรายการสินค้าได้: ' + error.message, 'error');
             }
         }
 
@@ -996,13 +1033,28 @@
 
             } catch (error) {
                 console.error('Error loading scripts:', error);
-                showAlert('Failed to load scripts', 'error');
+
+                // แสดง error ที่ละเอียดขึ้น
+                const contentDiv = document.getElementById('scripts-content');
+                contentDiv.innerHTML = `
+                    <div class="alert alert-error" style="margin: 20px;">
+                        <h4>⚠️ ไม่สามารถโหลด scripts ได้</h4>
+                        <p>Error: ${error.message}</p>
+                        <button class="btn btn-primary" onclick="loadScripts()">🔄 ลองใหม่</button>
+                    </div>
+                `;
+
+                showAlert('ไม่สามารถโหลด scripts ได้: ' + error.message, 'error');
             }
         }
 
         function displayScripts(productId) {
             const product = currentProducts.find(p => p.id == productId);
             const contentDiv = document.getElementById('scripts-content');
+
+            console.log('📄 Displaying scripts for product:', productId);
+            console.log('📊 Scripts count:', currentScripts.length);
+            console.log('📝 Scripts data:', currentScripts);
 
             contentDiv.innerHTML = `
                 <div class="section-header" style="border-bottom: 1px solid var(--border-color);">
