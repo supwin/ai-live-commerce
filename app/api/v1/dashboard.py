@@ -28,22 +28,12 @@ except ImportError as e:
     ai_script_service = None
 
 try:
-    from app.services.tts_service import tts_service
-    print("✅ TTS Service imported successfully")
+    from app.services.enhanced_tts_service import enhanced_tts_service as tts_service
+    print("✅ Enhanced TTS Service imported successfully")
 except ImportError as e:
-    print(f"⚠️ Could not import TTS Service: {e}")
-    # Create mock TTS service
-    class MockTTSService:
-        async def generate_script_audio(self, script_id: str, content: str, language: str = "th"):
-            import hashlib
-            filename = f"script_{script_id}_{hashlib.md5(content.encode()).hexdigest()[:8]}.mp3"
-            file_path = f"frontend/static/audio/{filename}"
-            web_url = f"/static/audio/{filename}"
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            with open(file_path, 'w') as f:
-                f.write("")
-            return file_path, web_url
-    tts_service = MockTTSService()
+    print(f"⚠️ Could not import Enhanced TTS Service: {e}")
+    from app.services.tts_service import tts_service
+    print("✅ Fallback to basic TTS Service")
 
 try:
     from app.utils.file_handler import file_handler
@@ -730,13 +720,12 @@ async def generate_mp3(request: MP3GenerationRequest, background_tasks: Backgrou
         raise HTTPException(status_code=500, detail=f"Error starting MP3 generation: {str(e)}")
 
 async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int, quality: str, db_session: Session):
-    """Background task for MP3 generation - Enhanced with proper database handling"""
-    # Create new database session for background task
+    """Enhanced background task for MP3 generation with emotional support"""
     from app.core.database import SessionLocal
     db = SessionLocal()
     
     try:
-        print(f"🎵 Starting MP3 generation for {len(script_ids)} scripts")
+        print(f"🎵 Starting Enhanced MP3 generation for {len(script_ids)} scripts")
         
         for script_id in script_ids:
             script = db.query(Script).filter(Script.id == script_id).first()
@@ -744,14 +733,57 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
             
             if script and voice_persona:
                 try:
-                    print(f"🎵 Generating MP3 for script {script_id}: {script.title}")
+                    print(f"🎵 Generating Enhanced MP3 for script {script_id}: {script.title}")
                     
-                    # Generate MP3 using TTS service
-                    file_path, web_url = await tts_service.generate_script_audio(
-                        script_id=str(script.id),
-                        content=script.content,
-                        language=getattr(script, 'language', 'th')
-                    )
+                    # เตรียม voice configuration
+                    voice_config = {
+                        "voice": voice_persona.voice_id,
+                        "voice_id": voice_persona.voice_id,
+                        "tts_provider": voice_persona.tts_provider,
+                        "emotion": getattr(voice_persona, 'emotion', 'professional'),
+                        "emotional_intensity": 1.2,  # เพิ่มความเข้มอารมณ์
+                        "speed": float(voice_persona.speed),
+                        "pitch": float(voice_persona.pitch),
+                        "volume": float(voice_persona.volume)
+                    }
+                    
+                    # กำหนดอารมณ์จาก script emotion
+                    script_emotion = getattr(script, 'target_emotion', 'professional')
+                    emotion_mapping = {
+                        "excited": "cheerful",
+                        "professional": "serious", 
+                        "friendly": "gentle",
+                        "confident": "serious",
+                        "energetic": "cheerful",
+                        "calm": "gentle",
+                        "urgent": "angry"
+                    }
+                    mapped_emotion = emotion_mapping.get(script_emotion, "serious")
+                    
+                    print(f"   🎭 Using emotion: {script_emotion} → {mapped_emotion}")
+                    print(f"   🔊 Provider: {voice_persona.tts_provider}")
+                    print(f"   🗣️ Voice: {voice_persona.voice_id}")
+                    
+                    # Generate MP3 with enhanced TTS
+                    if hasattr(tts_service, 'generate_emotional_speech'):
+                        # ใช้ Enhanced TTS Service
+                        file_path, web_url = await tts_service.generate_emotional_speech(
+                            text=script.content,
+                            script_id=str(script.id),
+                            provider=voice_persona.tts_provider,
+                            voice_config=voice_config,
+                            emotion=mapped_emotion,
+                            intensity=1.2,
+                            language=getattr(script, 'language', 'th')
+                        )
+                    else:
+                        # Fallback to basic TTS
+                        file_path, web_url = await tts_service.generate_script_audio(
+                            script_id=str(script.id),
+                            content=script.content,
+                            language=getattr(script, 'language', 'th'),
+                            voice_persona=voice_config
+                        )
                     
                     if file_path and web_url:
                         # Get file size
@@ -759,7 +791,7 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                         if os.path.exists(file_path):
                             file_size = os.path.getsize(file_path)
                         
-                        # Create MP3 record
+                        # Create MP3 record with enhanced metadata
                         mp3_file = MP3File(
                             script_id=script.id,
                             filename=os.path.basename(file_path),
@@ -770,11 +802,14 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                                 "speed": float(voice_persona.speed),
                                 "pitch": float(voice_persona.pitch),
                                 "volume": float(voice_persona.volume),
-                                "quality": quality
+                                "quality": quality,
+                                "emotion": mapped_emotion,
+                                "emotion_intensity": 1.2,
+                                "provider_config": voice_config
                             },
                             duration=getattr(script, 'duration_estimate', 60),
                             file_size=file_size,
-                            status="completed"  # ใช้ string แทน enum
+                            status="completed"
                         )
                         
                         db.add(mp3_file)
@@ -789,12 +824,13 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                             voice_persona.usage_count = getattr(voice_persona, 'usage_count', 0) + 1
                         
                         db.commit()
-                        print(f"✅ Generated MP3 for script {script.id}: {script.title}")
+                        print(f"✅ Enhanced MP3 generated for script {script.id}: {script.title}")
                         print(f"   📁 File: {file_path}")
                         print(f"   📏 Size: {file_size} bytes")
+                        print(f"   🎭 Emotion: {mapped_emotion}")
                         print(f"   ✅ Status: completed")
                     else:
-                        print(f"❌ Failed to generate MP3 for script {script.id}")
+                        print(f"❌ Failed to generate Enhanced MP3 for script {script.id}")
                         
                         # Create failed record
                         mp3_file = MP3File(
@@ -803,14 +839,14 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                             file_path="",
                             voice_persona_id=voice_persona_id,
                             tts_provider=voice_persona.tts_provider,
-                            status="failed",  # ใช้ string
-                            error_message="TTS generation failed"
+                            status="failed",
+                            error_message="Enhanced TTS generation failed"
                         )
                         db.add(mp3_file)
                         db.commit()
                         
                 except Exception as e:
-                    print(f"❌ Error generating MP3 for script {script_id}: {e}")
+                    print(f"❌ Error generating Enhanced MP3 for script {script_id}: {e}")
                     
                     # Create failed record
                     try:
@@ -820,7 +856,7 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                             file_path="",
                             voice_persona_id=voice_persona_id,
                             tts_provider="unknown",
-                            status="failed",  # ใช้ string
+                            status="failed",
                             error_message=str(e)
                         )
                         db.add(mp3_file)
@@ -830,13 +866,112 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                     
                     db.rollback()
                     
-        print(f"🎉 MP3 generation completed for {len(script_ids)} scripts")
+        print(f"🎉 Enhanced MP3 generation completed for {len(script_ids)} scripts")
                     
     except Exception as e:
-        print(f"❌ Background MP3 generation error: {e}")
+        print(f"❌ Enhanced background MP3 generation error: {e}")
         db.rollback()
     finally:
         db.close()
+
+@router.get("/dashboard/tts/providers")
+async def get_tts_providers():
+    """Get available TTS providers and their capabilities"""
+    try:
+        if hasattr(tts_service, 'get_available_providers'):
+            providers = tts_service.get_available_providers()
+        else:
+            # Fallback for basic TTS
+            providers = {
+                "basic": {
+                    "available": True,
+                    "voices": {"th": "Thai", "en": "English"},
+                    "supports_emotions": False,
+                    "quality": "basic",
+                    "cost": "free"
+                }
+            }
+        
+        return {
+            "providers": providers,
+            "enhanced_tts": hasattr(tts_service, 'generate_emotional_speech'),
+            "recommended": "edge" if providers.get("edge", {}).get("available") else "basic"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching TTS providers: {str(e)}")
+
+# เพิ่ม endpoint สำหรับทดสอบ TTS
+@router.post("/dashboard/tts/test")
+async def test_tts_generation(
+    text: str = "สวัสดีครับ ทดสอบระบบเสียงพูด",
+    provider: str = "edge",
+    emotion: str = "professional",
+    voice_id: Optional[str] = None
+):
+    """Test TTS generation with different providers and emotions"""
+    try:
+        if not hasattr(tts_service, 'generate_emotional_speech'):
+            raise HTTPException(status_code=501, detail="Enhanced TTS not available")
+        
+        # Use default voice if not specified
+        if not voice_id:
+            if provider == "edge":
+                voice_id = "th-TH-PremwadeeNeural"
+            elif provider == "elevenlabs":
+                voice_id = "pNInz6obpgDQGcFmaJgB"
+            else:
+                voice_id = "default"
+        
+        voice_config = {"voice": voice_id, "voice_id": voice_id}
+        
+        # Generate test audio
+        file_path, web_url = await tts_service.generate_emotional_speech(
+            text=text,
+            script_id="test",
+            provider=provider,
+            voice_config=voice_config,
+            emotion=emotion,
+            intensity=1.0,
+            language="th"
+        )
+        
+        if file_path and web_url:
+            return {
+                "success": True,
+                "message": "Test TTS generation completed",
+                "audio_url": web_url,
+                "file_path": file_path,
+                "provider": provider,
+                "emotion": emotion,
+                "voice_id": voice_id,
+                "text_preview": text[:50] + "..." if len(text) > 50 else text
+            }
+        else:
+            raise HTTPException(status_code=500, detail="TTS generation failed")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS test failed: {str(e)}")
+
+# เพิ่ม endpoint สำหรับดูอารมณ์ที่รองรับ
+@router.get("/dashboard/tts/emotions/{provider}")
+async def get_supported_emotions(provider: str):
+    """Get supported emotions for a TTS provider"""
+    try:
+        if hasattr(tts_service, 'get_emotions_for_provider'):
+            emotions = tts_service.get_emotions_for_provider(provider)
+        else:
+            emotions = ["neutral"]
+        
+        return {
+            "provider": provider,
+            "supported_emotions": emotions,
+            "enhanced_tts": hasattr(tts_service, 'generate_emotional_speech')
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching emotions: {str(e)}")
+
 
 @router.delete("/dashboard/mp3/{mp3_id}")
 async def delete_mp3(mp3_id: int, db: Session = Depends(get_db)):
@@ -1015,19 +1150,44 @@ async def get_voice_personas(
 ):
     """Get voice personas"""
     try:
+        print("🔍 DEBUG: Starting get_voice_personas")
         query = db.query(VoicePersona)
+        print("🔍 DEBUG: Created VoicePersona query")
         
         if active_only:
             query = query.filter(VoicePersona.is_active == True)
+            print("🔍 DEBUG: Applied active filter")
             
         if provider:
             query = query.filter(VoicePersona.tts_provider == provider)
+            print(f"🔍 DEBUG: Applied provider filter: {provider}")
         
+        print("🔍 DEBUG: About to execute query")
         personas = query.order_by(asc(VoicePersona.name)).all()
+        print(f"🔍 DEBUG: Found {len(personas)} personas")
         
-        return [persona.to_dict() for persona in personas]
+        # Test each persona individually
+        result = []
+        for i, persona in enumerate(personas):
+            try:
+                print(f"🔍 DEBUG: Processing persona {i+1}: {persona.name}")
+                print(f"🔍 DEBUG: Gender value: {persona.gender}")
+                print(f"🔍 DEBUG: Gender type: {type(persona.gender)}")
+                persona_dict = persona.to_dict()
+                result.append(persona_dict)
+                print(f"✅ DEBUG: Successfully processed persona {i+1}")
+            except Exception as e:
+                print(f"❌ DEBUG: Error processing persona {i+1} ({persona.name}): {e}")
+                print(f"🔍 DEBUG: Persona data: id={persona.id}, gender={persona.gender}")
+                raise e
+        
+        print("🔍 DEBUG: All personas processed successfully")
+        return result
         
     except Exception as e:
+        print(f"❌ ERROR in get_voice_personas: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching voice personas: {str(e)}")
 
 @router.post("/dashboard/personas/voice")

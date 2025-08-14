@@ -30,9 +30,9 @@ class VideoType(enum.Enum):
     LIFESTYLE = "lifestyle"
 
 class GenderType(enum.Enum):
-    MALE = "male"
-    FEMALE = "female"
-    NEUTRAL = "neutral"
+    MALE = "MALE"
+    FEMALE = "FEMALE"
+    NEUTRAL = "NEUTRAL"
 
 class Script(Base):
     """Script model for product scripts"""
@@ -198,6 +198,21 @@ class MP3File(Base):
     def web_url(self):
         """Get web-accessible URL"""
         return f"/static/audio/{self.filename}"
+
+    @property
+    def is_completed(self):
+        """Check if MP3 generation is completed"""
+        return self.status == "completed"
+
+    @property
+    def is_processing(self):
+        """Check if MP3 generation is in progress"""
+        return self.status == "processing"
+
+    @property
+    def is_failed(self):
+        """Check if MP3 generation failed"""
+        return self.status == "failed"  
     
     def to_dict(self):
         """Convert to dictionary for API responses"""
@@ -215,9 +230,12 @@ class MP3File(Base):
         "voice_settings": self.voice_settings or {},
         "quality_rating": self.quality_rating,
         "status": self.status,  # ใช้ string แทน enum
-        "is_completed": self.is_completed,
-        "is_processing": self.is_processing,
-        "is_failed": self.is_failed,
+        # "is_completed": self.is_completed,
+        # "is_processing": self.is_processing,
+        # "is_failed": self.is_failed,
+        "is_completed": self.status == "completed",
+        "is_processing": self.status == "processing", 
+        "is_failed": self.status == "failed",
         "generation_time": float(self.generation_time) if self.generation_time else None,
         "error_message": self.error_message,
         "created_at": self.created_at.isoformat() if self.created_at else None
@@ -264,7 +282,17 @@ class Video(Base):
     def web_url(self):
         """Get web-accessible URL"""
         return f"/uploads/videos/{self.filename}"
-    
+        
+    @property
+    def is_completed(self):
+        """Check if video processing is completed"""
+        return self.status == "completed"
+
+    @property
+    def is_processing(self):
+        """Check if video processing is in progress"""
+        return self.status == "processing"
+
     def to_dict(self):
         """Convert to dictionary for API responses"""
         return {
@@ -281,8 +309,10 @@ class Video(Base):
         "video_type": self.video_type.value if hasattr(self.video_type, 'value') else self.video_type,
         "thumbnail_path": self.thumbnail_path,
         "status": self.status,  # ใช้ string แทน enum
-        "is_completed": self.is_completed,
-        "is_processing": self.is_processing,
+        # "is_completed": self.is_completed,
+        # "is_processing": self.is_processing,
+        "is_completed": self.status == "completed",
+        "is_processing": self.status == "processing",
         "created_at": self.created_at.isoformat() if self.created_at else None
         }
 

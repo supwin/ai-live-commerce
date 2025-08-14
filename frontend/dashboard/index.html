@@ -1450,49 +1450,180 @@
                 return;
             }
 
-            const modal = `
-                <div class="modal-overlay" onclick="closeModal()">
-                    <div class="modal-content" onclick="event.stopPropagation()">
-                        <div class="modal-header">
-                            <h3>🎵 Generate MP3 for: ${escapeHtml(script.title)}</h3>
-                            <button class="modal-close" onclick="closeModal()">&times;</button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="form-group">
-                                <label class="form-label">Voice Persona:</label>
-                                <select class="form-control" id="voice-persona-select">
-                                    ${voicePersonas.map(persona =>
-                `<option value="${persona.id}">${escapeHtml(persona.name)} - ${escapeHtml(persona.description || '')}</option>`
-            ).join('')}
-                                </select>
+            // ดึงข้อมูล TTS providers
+            try {
+                const providersResponse = await fetch('/api/v1/dashboard/tts/providers');
+                const providersData = await providersResponse.json();
+
+                const modal = `
+                    <div class="modal-overlay" onclick="closeModal()">
+                        <div class="modal-content" onclick="event.stopPropagation()">
+                            <div class="modal-header">
+                                <h3>🎵 Enhanced MP3 Generation for: ${escapeHtml(script.title)}</h3>
+                                <button class="modal-close" onclick="closeModal()">&times;</button>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Quality:</label>
-                                <select class="form-control" id="mp3-quality-select">
-                                    <option value="medium">Medium (Recommended)</option>
-                                    <option value="high">High Quality</option>
-                                    <option value="low">Low (Fast)</option>
-                                </select>
-                            </div>
-                            <div class="alert alert-info">
-                                <strong>📝 Script Preview:</strong><br>
-                                <div style="max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px;">
-                                    ${formatEmotionalMarkup(script.content)}
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label class="form-label">Voice Persona:</label>
+                                    <select class="form-control" id="voice-persona-select" onchange="updateEmotionOptions()">
+                                        ${voicePersonas.map(persona => {
+                    const provider = persona.tts_provider || 'basic';
+                    const providerLabel = provider === 'edge' ? '🎭 Enhanced' :
+                        provider === 'elevenlabs' ? '🤖 Premium AI' :
+                            provider === 'azure' ? '🏢 Enterprise' : '📢 Basic';
+                    const premiumLabel = persona.is_premium ? ' 💎' : '';
+
+                    return `<option value="${persona.id}" data-provider="${provider}" data-emotions='${JSON.stringify(persona.emotional_range || [])}'>
+                                                ${providerLabel} ${escapeHtml(persona.name)}${premiumLabel}
+                                            </option>`;
+                }).join('')}
+                                    </select>
+                                    <small class="text-secondary">
+                                        Enhanced voices support emotional expressions and natural speech patterns
+                                    </small>
                                 </div>
-                                <small>Duration: ~${script.duration_estimate || 'Unknown'} seconds</small>
+                                
+                                <div class="form-group">
+                                    <label class="form-label">Emotion & Mood:</label>
+                                    <select class="form-control" id="emotion-select">
+                                        <option value="professional">🎯 Professional - มืออาชีพ เป็นทางการ</option>
+                                        <option value="friendly">😊 Friendly - เป็นมิตร อบอุ่น</option>
+                                        <option value="excited">🔥 Excited - ตื่นเต้น กระตือรือร้น</option>
+                                        <option value="confident">💪 Confident - มั่นใจ แน่วแน่</option>
+                                        <option value="energetic">⚡ Energetic - มีพลัง เร่าร้อน</option>
+                                        <option value="calm">😌 Calm - สงบ ใจเย็น</option>
+                                        <option value="cheerful">🎉 Cheerful - ร่าเริง สนุกสนาน</option>
+                                        <option value="gentle">🌸 Gentle - อ่อนโยน นุ่มนวล</option>
+                                        <option value="serious">🎖️ Serious - จริงจัง เข้มงวด</option>
+                                        <option value="urgent">⏰ Urgent - เร่งด่วน จำกัดเวลา</option>
+                                    </select>
+                                    <small class="text-secondary" id="emotion-description">
+                                        Select the emotional tone for the voice generation
+                                    </small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="form-label">Emotion Intensity:</label>
+                                    <input type="range" class="form-control" id="emotion-intensity" 
+                                        min="0.5" max="2.0" step="0.1" value="1.2">
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
+                                        <span>Subtle (0.5)</span>
+                                        <span id="intensity-value">1.2</span>
+                                        <span>Intense (2.0)</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="form-label">Audio Quality:</label>
+                                    <select class="form-control" id="mp3-quality-select">
+                                        <option value="high">🔊 High Quality (Premium)</option>
+                                        <option value="medium" selected>🎵 Medium Quality (Recommended)</option>
+                                        <option value="low">📻 Low Quality (Fast)</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="alert alert-info">
+                                    <strong>📝 Script Preview:</strong><br>
+                                    <div style="max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                                        ${formatEmotionalMarkup(script.content)}
+                                    </div>
+                                    <div style="margin-top: 10px; font-size: 0.9rem;">
+                                        <strong>Duration:</strong> ~${script.duration_estimate || 'Unknown'} seconds |
+                                        <strong>Words:</strong> ${script.word_count || 0} |
+                                        <strong>Target Emotion:</strong> ${script.target_emotion || 'Professional'}
+                                    </div>
+                                </div>
+                                
+                                ${providersData.enhanced_tts ? `
+                                    <div class="alert alert-success" style="margin-top: 15px;">
+                                        <strong>🎭 Enhanced TTS Active!</strong><br>
+                                        This system supports emotional voice generation, natural speech patterns, and multiple voice providers.
+                                        <br><small>Recommended: Edge TTS for best Thai language support</small>
+                                    </div>
+                                ` : `
+                                    <div class="alert alert-warning" style="margin-top: 15px;">
+                                        <strong>📢 Basic TTS Mode</strong><br>
+                                        Enhanced emotional TTS is not available. Using fallback mode.
+                                    </div>
+                                `}
                             </div>
-                        </div>
-                        <div class="modal-actions">
-                            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                            <button class="btn btn-success" onclick="confirmMP3Generation(${scriptId})">
-                                <i class="fas fa-music"></i> Generate MP3
-                            </button>
+                            <div class="modal-actions">
+                                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                                <button class="btn btn-info btn-sm" onclick="testTTSPreview(${scriptId})" style="margin-right: auto;">
+                                    <i class="fas fa-play"></i> Preview
+                                </button>
+                                <button class="btn btn-success" onclick="confirmEnhancedMP3Generation(${scriptId})">
+                                    <i class="fas fa-magic"></i> Generate Enhanced MP3
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+                window.currentEditingScriptId = scriptId;
+                showModal(modal);
 
-            showModal(modal);
+                // Setup event listeners
+                setupEnhancedTTSEventListeners();
+
+            } catch (error) {
+                console.error('Error loading TTS providers:', error);
+                // Fallback to basic modal
+                showBasicMP3GenerationModal(script);
+            }
+        }
+
+        function setupEnhancedTTSEventListeners() {
+            // Update intensity display
+            const intensitySlider = document.getElementById('emotion-intensity');
+            const intensityValue = document.getElementById('intensity-value');
+
+            if (intensitySlider && intensityValue) {
+                intensitySlider.addEventListener('input', function () {
+                    intensityValue.textContent = this.value;
+                });
+            }
+
+            // Update emotion options based on selected voice
+            updateEmotionOptions();
+        }
+
+        async function updateEmotionOptions() {
+            const voiceSelect = document.getElementById('voice-persona-select');
+            const emotionSelect = document.getElementById('emotion-select');
+            const emotionDescription = document.getElementById('emotion-description');
+
+            if (!voiceSelect || !emotionSelect) return;
+
+            const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+            const provider = selectedOption.getAttribute('data-provider');
+            const supportedEmotions = JSON.parse(selectedOption.getAttribute('data-emotions') || '[]');
+
+            // Update emotion description
+            const providerInfo = {
+                'edge': 'Microsoft Edge TTS - รองรับอารมณ์หลากหลายด้วย SSML',
+                'elevenlabs': 'ElevenLabs AI - เสียง AI ที่มีอารมณ์ธรรมชาติสูง',
+                'azure': 'Azure Cognitive Services - เสียงระดับองค์กร',
+                'basic': 'Basic TTS - เสียงพื้นฐาน'
+            };
+
+            if (emotionDescription) {
+                emotionDescription.textContent = providerInfo[provider] || 'Voice provider information';
+            }
+
+            // Update available emotions (keep all options but highlight supported ones)
+            const emotionOptions = emotionSelect.querySelectorAll('option');
+            emotionOptions.forEach(option => {
+                const emotionValue = option.value;
+                const isSupported = supportedEmotions.includes(emotionValue);
+
+                if (isSupported) {
+                    option.style.background = '#e8f5e8';
+                    option.style.fontWeight = 'bold';
+                } else {
+                    option.style.background = '';
+                    option.style.fontWeight = '';
+                }
+            });
         }
 
         async function confirmMP3Generation(scriptId) {
@@ -2362,6 +2493,175 @@
             await initializeDashboard();
             showAlert('Dashboard refreshed successfully!', 'success');
         }
+
+        async function confirmEnhancedMP3Generation(scriptId) {
+            // ตรวจสอบว่ามี script ที่เลือกไว้หรือไม่
+            if (!scriptId) {
+                alert('ไม่พบข้อมูล script ที่ต้องการสร้าง MP3');
+                return;
+            }
+
+            const voicePersonaSelect = document.getElementById('voice-persona-select');
+            const emotionSelect = document.getElementById('emotion-select');
+            const qualitySelect = document.getElementById('mp3-quality-select');
+            const intensitySlider = document.getElementById('emotion-intensity');
+
+            // ตรวจสอบว่ามี voice persona ที่เลือกไว้หรือไม่
+            if (!voicePersonaSelect || !voicePersonaSelect.value) {
+                alert('กรุณาเลือก Voice Persona');
+                return;
+            }
+
+
+            const currentScript = currentScripts.find(s => s.id === scriptId);
+            const scriptTitle = currentScript ? currentScript.title : 'Script';
+
+            // แสดง confirmation dialog
+            const confirm = window.confirm(
+                `ต้องการสร้าง Enhanced MP3 สำหรับ "${scriptTitle}" หรือไม่?\n\n` +
+                `Voice: ${voicePersonaSelect.selectedOptions[0].text}\n` +
+                `Emotion: ${emotionSelect.value}\n` +
+                `Quality: ${qualitySelect.value}`
+            );
+
+            if (confirm) {
+                try {
+                    closeModal();
+                    // เรียก function สร้าง MP3 พร้อม parameters ที่ครบถ้วน
+                    await generateEnhancedMP3WithSettings(scriptId, {
+                        voicePersonaId: parseInt(voicePersonaSelect.value),
+                        emotion: emotionSelect.value,
+                        intensity: parseFloat(intensitySlider.value),
+                        quality: qualitySelect.value
+                    });
+                } catch (error) {
+                    console.error('Enhanced MP3 generation error:', error);
+                    alert('เกิดข้อผิดพลาดในการสร้าง MP3: ' + error.message);
+                }
+            }
+        }
+
+        async function generateEnhancedMP3WithSettings(scriptId, settings) {
+            try {
+                showAlert('🎵 กำลังสร้าง Enhanced MP3 พร้อม emotional settings...', 'info');
+
+                const response = await fetch('/api/v1/dashboard/mp3/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        script_ids: [scriptId],
+                        voice_persona_id: settings.voicePersonaId,
+                        quality: 'enhanced',
+                        emotion: settings.emotion,
+                        intensity: settings.intensity
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showAlert('✅ Enhanced MP3 generation started! กำลังประมวลผลในพื้นหลัง...', 'success');
+
+                    // Poll for completion
+                    pollMP3Generation(scriptId);
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to start Enhanced MP3 generation');
+                }
+
+            } catch (error) {
+                console.error('Error generating Enhanced MP3:', error);
+                showAlert('Failed to generate Enhanced MP3: ' + error.message, 'error');
+            }
+        }
+
+        function getCurrentScriptIdFromModal() {
+            // วิธีที่ 1: ดึงจาก data attribute ของ modal
+            const modal = document.querySelector('.modal[style*="block"]'); // modal ที่เปิดอยู่
+            if (modal) {
+                const scriptId = modal.dataset.scriptId;
+                if (scriptId) return parseInt(scriptId);
+            }
+
+            // วิธีที่ 2: ดึงจาก element ที่มี script-id
+            const scriptElement = document.querySelector('[data-current-script-id]');
+            if (scriptElement) {
+                return parseInt(scriptElement.dataset.currentScriptId);
+            }
+
+            // วิธีที่ 3: ดึงจาก global variable (ถ้ามี)
+            if (window.currentScriptId) {
+                return parseInt(window.currentScriptId);
+            }
+
+            // วิธีที่ 4: ดึงจาก URL หรือ form hidden field
+            const hiddenInput = document.querySelector('input[name="script_id"]');
+            if (hiddenInput && hiddenInput.value) {
+                return parseInt(hiddenInput.value);
+            }
+
+            return null;
+        }
+
+        async function generateEnhancedMP3(scriptIds, voicePersonaId) {
+            // แสดง loading
+            showLoadingState('กำลังสร้าง Enhanced MP3...');
+
+            try {
+                const response = await fetch('/api/v1/dashboard/mp3/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        script_ids: scriptIds,
+                        voice_persona_id: parseInt(voicePersonaId),
+                        quality: 'enhanced'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(`เริ่มสร้าง Enhanced MP3 แล้ว!\n\nจำนวน: ${data.scripts.length} scripts\nเสียง: ${data.voice_persona.name}`);
+
+                    // รีเฟรช script list
+                    loadProductScripts(currentProductId);
+                } else {
+                    throw new Error(data.detail || 'Unknown error');
+                }
+
+            } catch (error) {
+                console.error('Enhanced MP3 generation error:', error);
+                alert('เกิดข้อผิดพลาด: ' + error.message);
+            } finally {
+                hideLoadingState();
+            }
+        }
+
+        function getSelectedScripts() {
+            // ดึง scripts ที่ถูกเลือก (checkboxes)
+            const checkboxes = document.querySelectorAll('input[type="checkbox"][data-script-id]:checked');
+            return Array.from(checkboxes).map(cb => parseInt(cb.dataset.scriptId));
+        }
+
+        function showLoadingState(message) {
+            // แสดง loading indicator
+            const loadingDiv = document.getElementById('loadingIndicator');
+            if (loadingDiv) {
+                loadingDiv.textContent = message;
+                loadingDiv.style.display = 'block';
+            }
+        }
+
+        function hideLoadingState() {
+            // ซ่อน loading indicator
+            const loadingDiv = document.getElementById('loadingIndicator');
+            if (loadingDiv) {
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+
     </script>
 </body>
 

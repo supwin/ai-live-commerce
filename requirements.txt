@@ -142,3 +142,13 @@ docker==6.1.3              # Docker integration (optional)
 # - SSL certificates
 #
 # ============================================================================
+
+# เพิ่มใน requirements.txt
+
+# Enhanced TTS Dependencies
+azure-cognitiveservices-speech==1.34.0  # Azure Speech Services
+
+# Audio Enhancement
+librosa==0.10.1             # Audio analysis
+soundfile==0.12.1           # Audio file handling
+numpy==1.24.3               # Numerical computing
