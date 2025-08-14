@@ -607,8 +607,7 @@ async def update_script(script_id: int, request: ScriptUpdateRequest, db: Sessio
             raise HTTPException(status_code=404, detail="Script not found")
         
         # Check if script can be edited
-        can_edit = getattr(script, 'can_edit', True)
-        if not can_edit:
+        if script.has_mp3:
             raise HTTPException(
                 status_code=400, 
                 detail="Script cannot be edited because it has MP3 files. Delete MP3s first to unlock editing."
@@ -635,6 +634,7 @@ async def update_script(script_id: int, request: ScriptUpdateRequest, db: Sessio
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating script: {str(e)}")
+
 
 @router.delete("/dashboard/scripts/{script_id}")
 async def delete_script(script_id: int, db: Session = Depends(get_db)):
@@ -675,13 +675,14 @@ async def delete_script(script_id: int, db: Session = Depends(get_db)):
 # MP3 Generation Endpoints
 @router.post("/dashboard/mp3/generate")
 async def generate_mp3(request: MP3GenerationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Generate MP3 files from scripts"""
+    """Generate MP3 files from scripts - Enhanced version"""
     try:
-        # Validate scripts exist and are editable
+        # Validate scripts exist
         scripts = db.query(Script).filter(Script.id.in_(request.script_ids)).all()
         
         if len(scripts) != len(request.script_ids):
-            raise HTTPException(status_code=404, detail="One or more scripts not found")
+            missing_ids = set(request.script_ids) - {s.id for s in scripts}
+            raise HTTPException(status_code=404, detail=f"Scripts not found: {missing_ids}")
         
         # Validate voice persona
         voice_persona = db.query(VoicePersona).filter(VoicePersona.id == request.voice_persona_id).first()
@@ -694,8 +695,12 @@ async def generate_mp3(request: MP3GenerationRequest, background_tasks: Backgrou
             titles = [s.title for s in scripts_with_mp3]
             raise HTTPException(
                 status_code=400, 
-                detail=f"Scripts already have MP3 files: {', '.join(titles)}"
+                detail=f"Scripts already have MP3 files: {', '.join(titles[:3])}{'...' if len(titles) > 3 else ''}"
             )
+        
+        print(f"🎵 Starting MP3 generation for {len(scripts)} scripts")
+        print(f"   Voice: {voice_persona.name}")
+        print(f"   Quality: {request.quality}")
         
         # Start MP3 generation in background
         background_tasks.add_task(
@@ -703,14 +708,20 @@ async def generate_mp3(request: MP3GenerationRequest, background_tasks: Backgrou
             request.script_ids,
             request.voice_persona_id,
             request.quality,
-            db
+            db  # Pass current session for reference
         )
         
         return {
             "message": f"MP3 generation started for {len(scripts)} scripts",
-            "scripts": [{"id": s.id, "title": s.title} for s in scripts],
-            "voice_persona": voice_persona.name,
-            "status": "processing"
+            "scripts": [{"id": s.id, "title": s.title, "duration_estimate": s.duration_estimate} for s in scripts],
+            "voice_persona": {
+                "id": voice_persona.id,
+                "name": voice_persona.name,
+                "provider": voice_persona.tts_provider
+            },
+            "quality": request.quality,
+            "status": "processing",
+            "estimated_completion": f"{len(scripts) * 3} seconds"
         }
         
     except HTTPException:
@@ -718,15 +729,23 @@ async def generate_mp3(request: MP3GenerationRequest, background_tasks: Backgrou
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error starting MP3 generation: {str(e)}")
 
-async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int, quality: str, db: Session):
-    """Background task for MP3 generation"""
+async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int, quality: str, db_session: Session):
+    """Background task for MP3 generation - Enhanced with proper database handling"""
+    # Create new database session for background task
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    
     try:
+        print(f"🎵 Starting MP3 generation for {len(script_ids)} scripts")
+        
         for script_id in script_ids:
             script = db.query(Script).filter(Script.id == script_id).first()
             voice_persona = db.query(VoicePersona).filter(VoicePersona.id == voice_persona_id).first()
             
             if script and voice_persona:
                 try:
+                    print(f"🎵 Generating MP3 for script {script_id}: {script.title}")
+                    
                     # Generate MP3 using TTS service
                     file_path, web_url = await tts_service.generate_script_audio(
                         script_id=str(script.id),
@@ -735,6 +754,11 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                     )
                     
                     if file_path and web_url:
+                        # Get file size
+                        file_size = 0
+                        if os.path.exists(file_path):
+                            file_size = os.path.getsize(file_path)
+                        
                         # Create MP3 record
                         mp3_file = MP3File(
                             script_id=script.id,
@@ -743,13 +767,14 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                             voice_persona_id=voice_persona_id,
                             tts_provider=voice_persona.tts_provider,
                             voice_settings={
-                                "speed": voice_persona.speed,
-                                "pitch": voice_persona.pitch,
-                                "volume": voice_persona.volume
+                                "speed": float(voice_persona.speed),
+                                "pitch": float(voice_persona.pitch),
+                                "volume": float(voice_persona.volume),
+                                "quality": quality
                             },
                             duration=getattr(script, 'duration_estimate', 60),
-                            file_size=os.path.getsize(file_path) if os.path.exists(file_path) else 0,
-                            status="completed"
+                            file_size=file_size,
+                            status="completed"  # ใช้ string แทน enum
                         )
                         
                         db.add(mp3_file)
@@ -765,15 +790,53 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                         
                         db.commit()
                         print(f"✅ Generated MP3 for script {script.id}: {script.title}")
+                        print(f"   📁 File: {file_path}")
+                        print(f"   📏 Size: {file_size} bytes")
+                        print(f"   ✅ Status: completed")
                     else:
                         print(f"❌ Failed to generate MP3 for script {script.id}")
+                        
+                        # Create failed record
+                        mp3_file = MP3File(
+                            script_id=script.id,
+                            filename=f"failed_{script.id}.mp3",
+                            file_path="",
+                            voice_persona_id=voice_persona_id,
+                            tts_provider=voice_persona.tts_provider,
+                            status="failed",  # ใช้ string
+                            error_message="TTS generation failed"
+                        )
+                        db.add(mp3_file)
+                        db.commit()
                         
                 except Exception as e:
                     print(f"❌ Error generating MP3 for script {script_id}: {e}")
                     
+                    # Create failed record
+                    try:
+                        mp3_file = MP3File(
+                            script_id=script_id,
+                            filename=f"error_{script_id}.mp3",
+                            file_path="",
+                            voice_persona_id=voice_persona_id,
+                            tts_provider="unknown",
+                            status="failed",  # ใช้ string
+                            error_message=str(e)
+                        )
+                        db.add(mp3_file)
+                        db.commit()
+                    except:
+                        pass
+                    
+                    db.rollback()
+                    
+        print(f"🎉 MP3 generation completed for {len(script_ids)} scripts")
+                    
     except Exception as e:
         print(f"❌ Background MP3 generation error: {e}")
         db.rollback()
+    finally:
+        db.close()
 
 @router.delete("/dashboard/mp3/{mp3_id}")
 async def delete_mp3(mp3_id: int, db: Session = Depends(get_db)):
@@ -821,6 +884,84 @@ async def delete_mp3(mp3_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting MP3: {str(e)}")
+
+@router.delete("/dashboard/scripts/{script_id}/mp3")
+async def delete_script_mp3(script_id: int, db: Session = Depends(get_db)):
+    """Delete all MP3 files for a specific script and unlock script for editing"""
+    try:
+        script = db.query(Script).filter(Script.id == script_id).first()
+        if not script:
+            raise HTTPException(status_code=404, detail="Script not found")
+        
+        # Get all MP3 files for this script
+        mp3_files = db.query(MP3File).filter(MP3File.script_id == script_id).all()
+        
+        if not mp3_files:
+            raise HTTPException(status_code=404, detail="No MP3 files found for this script")
+        
+        deleted_files = []
+        
+        # Delete each MP3 file
+        for mp3_file in mp3_files:
+            filename = mp3_file.filename
+            
+            # Delete file from disk
+            if mp3_file.file_path and os.path.exists(mp3_file.file_path):
+                try:
+                    os.remove(mp3_file.file_path)
+                    print(f"🗑️ Deleted file: {mp3_file.file_path}")
+                except Exception as e:
+                    print(f"⚠️ Failed to delete file {mp3_file.file_path}: {e}")
+            
+            # Delete MP3 record from database
+            db.delete(mp3_file)
+            deleted_files.append(filename)
+        
+        # Unlock script for editing
+        script.has_mp3 = False
+        if hasattr(script, 'is_editable'):
+            script.is_editable = True
+        
+        db.commit()
+        
+        return {
+            "message": f"Deleted {len(deleted_files)} MP3 file(s) for script '{script.title}'",
+            "deleted_files": deleted_files,
+            "script_unlocked": True,
+            "script_id": script_id
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting script MP3s: {str(e)}")
+
+# เพิ่ม endpoint สำหรับดู MP3 files ของ script
+@router.get("/dashboard/scripts/{script_id}/mp3")
+async def get_script_mp3_files(script_id: int, db: Session = Depends(get_db)):
+    """Get all MP3 files for a specific script"""
+    try:
+        script = db.query(Script).filter(Script.id == script_id).first()
+        if not script:
+            raise HTTPException(status_code=404, detail="Script not found")
+        
+        mp3_files = db.query(MP3File).filter(MP3File.script_id == script_id).all()
+        
+        return {
+            "script_id": script_id,
+            "script_title": script.title,
+            "mp3_files": [mp3.to_dict() for mp3 in mp3_files],
+            "total_files": len(mp3_files)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching script MP3s: {str(e)}")
+
+
 
 # Persona Management Endpoints
 @router.get("/dashboard/personas/script")

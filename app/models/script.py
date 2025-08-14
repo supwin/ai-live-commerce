@@ -87,11 +87,25 @@ class Script(Base):
 
     @property
     def status_enum(self):
-        """Get status as enum"""
+        """Get status as enum if possible"""
         try:
-            return ScriptStatus(self.status)
+            return MP3Status(self.status)
         except ValueError:
-            return ScriptStatus.DRAFT    
+            return None     
+    @property
+    def is_completed(self):
+        """Check if MP3 generation is completed"""
+        return self.status == "completed"                   
+
+    @property
+    def is_processing(self):
+        """Check if MP3 generation is in progress"""
+        return self.status == "processing"
+
+    @property
+    def is_failed(self):
+        """Check if MP3 generation failed"""
+        return self.status == "failed"
 
     @property
     def persona_name(self):
@@ -159,7 +173,7 @@ class MP3File(Base):
     
     # Quality and Status
     quality_rating = Column(Integer, default=0)  # 1-5 stars
-    status = Column(Enum(MP3Status), default=MP3Status.PROCESSING)
+    status = Column(String(20), default="processing")   
     
     # Generation Metadata
     generation_time = Column(DECIMAL(6,2))  # Time taken to generate in seconds
@@ -188,22 +202,25 @@ class MP3File(Base):
     def to_dict(self):
         """Convert to dictionary for API responses"""
         return {
-            "id": self.id,
-            "script_id": self.script_id,
-            "filename": self.filename,
-            "file_path": self.file_path,
-            "web_url": self.web_url,
-            "duration": float(self.duration) if self.duration else None,
-            "file_size": self.file_size,
-            "file_size_mb": self.file_size_mb,
-            "voice_persona_id": self.voice_persona_id,
-            "tts_provider": self.tts_provider,
-            "voice_settings": self.voice_settings or {},
-            "quality_rating": self.quality_rating,
-            "status": self.status,
-            "generation_time": float(self.generation_time) if self.generation_time else None,
-            "error_message": self.error_message,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+        "id": self.id,
+        "script_id": self.script_id,
+        "filename": self.filename,
+        "file_path": self.file_path,
+        "web_url": self.web_url,
+        "duration": float(self.duration) if self.duration else None,
+        "file_size": self.file_size,
+        "file_size_mb": self.file_size_mb,
+        "voice_persona_id": self.voice_persona_id,
+        "tts_provider": self.tts_provider,
+        "voice_settings": self.voice_settings or {},
+        "quality_rating": self.quality_rating,
+        "status": self.status,  # ใช้ string แทน enum
+        "is_completed": self.is_completed,
+        "is_processing": self.is_processing,
+        "is_failed": self.is_failed,
+        "generation_time": float(self.generation_time) if self.generation_time else None,
+        "error_message": self.error_message,
+        "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
 class Video(Base):
@@ -227,7 +244,7 @@ class Video(Base):
     thumbnail_path = Column(String(500))
     
     # Status
-    status = Column(Enum(MP3Status), default=MP3Status.PROCESSING)
+    status = Column(String(20), default="processing")
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -251,20 +268,22 @@ class Video(Base):
     def to_dict(self):
         """Convert to dictionary for API responses"""
         return {
-            "id": self.id,
-            "product_id": self.product_id,
-            "title": self.title,
-            "filename": self.filename,
-            "file_path": self.file_path,
-            "web_url": self.web_url,
-            "duration": float(self.duration) if self.duration else None,
-            "file_size": self.file_size,
-            "file_size_mb": self.file_size_mb,
-            "resolution": self.resolution,
-            "video_type": self.video_type.value,
-            "thumbnail_path": self.thumbnail_path,
-            "status": self.status,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+        "id": self.id,
+        "product_id": self.product_id,
+        "title": self.title,
+        "filename": self.filename,
+        "file_path": self.file_path,
+        "web_url": self.web_url,
+        "duration": float(self.duration) if self.duration else None,
+        "file_size": self.file_size,
+        "file_size_mb": self.file_size_mb,
+        "resolution": self.resolution,
+        "video_type": self.video_type.value if hasattr(self.video_type, 'value') else self.video_type,
+        "thumbnail_path": self.thumbnail_path,
+        "status": self.status,  # ใช้ string แทน enum
+        "is_completed": self.is_completed,
+        "is_processing": self.is_processing,
+        "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
 class ScriptPersona(Base):
