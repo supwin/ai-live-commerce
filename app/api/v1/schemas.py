@@ -91,7 +91,13 @@ class ScriptResponse(BaseModel):
 class MP3GenerationRequest(BaseModel):
     script_ids: List[int]
     voice_persona_id: int
-    quality: str = Field(default="medium", pattern="^(low|medium|high)$")
+    quality: str = Field(default="medium", pattern="^(low|medium|high|enhanced)$")
+    # เพิ่ม fields ใหม่สำหรับ Enhanced TTS
+    emotion: Optional[str] = Field(default="professional")
+    intensity: Optional[float] = Field(default=1.0, ge=0.5, le=2.0)
+    speed: Optional[float] = Field(default=1.0, ge=0.5, le=2.0)
+    pitch: Optional[float] = Field(default=1.0, ge=0.5, le=2.0)
+    volume: Optional[float] = Field(default=1.0, ge=0.5, le=2.0)
 
 class MP3FileResponse(BaseModel):
     id: int

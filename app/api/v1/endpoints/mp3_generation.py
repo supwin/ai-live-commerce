@@ -75,7 +75,9 @@ async def generate_mp3(
             request.script_ids,
             request.voice_persona_id,
             request.quality,
-            db.get_bind().url  # ส่ง database URL สำหรับสร้าง session ใหม่
+            db.get_bind().url,
+            getattr(request, 'emotion', 'professional'),
+            getattr(request, 'intensity', 1.0)
         )
         
         return {
@@ -108,7 +110,9 @@ async def _generate_mp3_background(
     script_ids: List[int], 
     voice_persona_id: int, 
     quality: str, 
-    db_url: str
+    db_url: str,
+    emotion: str = "professional",
+    intensity: float = 1.0
 ):
     """
     Enhanced background task สำหรับการสร้าง MP3 พร้อม emotional support
