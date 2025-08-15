@@ -236,7 +236,7 @@ async function switchToScriptsSection(productId) {
 // Scripts Management
 async function loadProductsForScriptsFilter() {
     try {
-        console.log('🔄 Loading products for scripts filter...');
+        console.log('📄 Loading products for scripts filter...');
 
         const response = await fetch('/api/v1/dashboard/products');
 
@@ -254,17 +254,22 @@ async function loadProductsForScriptsFilter() {
         }
 
         const currentValue = select.value;
-        select.innerHTML = '<option value="">Select Product</option>' +
-            products.map(product =>
-                `<option value="${product.id}">${escapeHtml(product.name)} (${escapeHtml(product.sku)})</option>`
-            ).join('');
+
+        // ✨ เพิ่ม "ALL" option
+        select.innerHTML = `
+            <option value="">Select Product</option>
+            <option value="all">🌟 ALL Products</option>
+            ${products.map(product =>
+            `<option value="${product.id}">${escapeHtml(product.name)} (${escapeHtml(product.sku)})</option>`
+        ).join('')}
+        `;
 
         // Restore previous selection if it still exists
-        if (products.some(p => p.id == currentValue)) {
+        if (currentValue === "all" || products.some(p => p.id == currentValue)) {
             select.value = currentValue;
         }
 
-        console.log(`✅ Loaded ${products.length} products for filter`);
+        console.log(`✅ Loaded ${products.length} products for filter with ALL option`);
     } catch (error) {
         console.error('❌ Error loading products for filter:', error);
         const select = document.getElementById('scripts-product-filter');
@@ -287,39 +292,72 @@ async function loadScripts() {
     try {
         console.log('🔍 Loading scripts for product:', productId);
 
-        const response = await fetch(`/api/v1/dashboard/products/${productId}/scripts`);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch scripts. Status: ${response.status}`);
+        let allScripts = [];
+
+        if (productId === "all") {
+            // ✨ สำหรับ ALL - ดึงจากทุกสินค้า
+            console.log('📋 Loading scripts from ALL products...');
+
+            // ดึงรายการสินค้าทั้งหมดก่อน
+            const productsResponse = await fetch('/api/v1/dashboard/products');
+            if (!productsResponse.ok) {
+                throw new Error('Failed to fetch products');
+            }
+            const productsData = await productsResponse.json();
+            const products = productsData.products || [];
+
+            // ดึง scripts จากแต่ละสินค้า
+            const scriptPromises = products.map(async (product) => {
+                try {
+                    const response = await fetch(`/api/v1/dashboard/products/${product.id}/scripts`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        const scripts = data.scripts || [];
+                        // เพิ่ม product info ให้แต่ละ script
+                        return scripts.map(script => ({
+                            ...script,
+                            product_name: product.name,
+                            product_sku: product.sku
+                        }));
+                    }
+                    return [];
+                } catch (error) {
+                    console.warn(`Failed to load scripts for product ${product.id}:`, error);
+                    return [];
+                }
+            });
+
+            // รอให้ดึงครบทุกสินค้า
+            const scriptArrays = await Promise.all(scriptPromises);
+            allScripts = scriptArrays.flat(); // รวมทุก array เป็น array เดียว
+
+            console.log(`✅ Loaded ${allScripts.length} scripts from ${products.length} products`);
+
+        } else {
+            // ดึงจากสินค้าเดียว (เหมือนเดิม)
+            const response = await fetch(`/api/v1/dashboard/products/${productId}/scripts`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch scripts. Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            allScripts = data.scripts || [];
         }
 
-        const data = await response.json();
-        console.log('📊 Scripts response:', data);
-
-        // 🔧 แก้ไขจุดนี้ - ตรวจสอบว่า response เป็น array หรือไม่
-        if (data && data.scripts) {
-            if (Array.isArray(data.scripts)) {
-                currentScripts = data.scripts;
-            } else {
-                console.warn('⚠️ Scripts data is not an array, using empty array:', typeof data.scripts);
-                currentScripts = [];
-            }
-        } else if (Array.isArray(data)) {
-            // กรณีที่ API return array โดยตรง
-            currentScripts = data;
+        // ตรวจสอบและจัดเก็บ scripts
+        if (Array.isArray(allScripts)) {
+            currentScripts = allScripts;
         } else {
-            console.warn('⚠️ No scripts data found in response');
+            console.warn('⚠️ Scripts data is not an array');
             currentScripts = [];
         }
 
         console.log('✅ Scripts loaded:', currentScripts.length, 'items');
-        displayScripts(productId);
+        displayScripts(productId === "all" ? "all" : productId);
 
     } catch (error) {
         console.error('❌ Error loading scripts:', error);
-
-        // 🔧 แก้ไขจุดนี้ - ตั้ง currentScripts เป็น array เสมอ
         currentScripts = [];
-
         const contentDiv = document.getElementById('scripts-content');
         contentDiv.innerHTML = `
             <div class="alert alert-error" style="margin: 20px;">
@@ -334,7 +372,6 @@ async function loadScripts() {
 
 
 function displayScripts(productId) {
-    const product = currentProducts.find(p => p.id == productId);
     const contentDiv = document.getElementById('scripts-content');
 
     // 🔧 แก้ไขจุดนี้ - ตรวจสอบว่า currentScripts เป็น array ก่อนใช้ filter
@@ -343,53 +380,77 @@ function displayScripts(productId) {
         currentScripts = [];
     }
 
-    const scriptsWithoutMP3 = currentScripts.filter(s => s && !s.has_mp3);
-    const scriptsWithMP3 = currentScripts.filter(s => s && s.has_mp3);
+    // 🆕 จัดการการแสดงผลสำหรับ "ALL"
+    let product = null;
+    let displayTitle = "";
+    let scriptsToShow = currentScripts;
 
-    // ส่วนที่เหลือของ displayScripts() ใช้เหมือนเดิม...
+    if (productId === "all") {
+        displayTitle = "📋 All Scripts from All Products";
+        // Group scripts by product for better display
+        const productGroups = {};
+        scriptsToShow.forEach(script => {
+            const prodName = script.product_name || `Product ID ${script.product_id}`;
+            if (!productGroups[prodName]) {
+                productGroups[prodName] = [];
+            }
+            productGroups[prodName].push(script);
+        });
+    } else {
+        product = currentProducts.find(p => p.id == productId);
+        displayTitle = `📋 Scripts for ${product ? escapeHtml(product.name) : 'Selected Product'}`;
+    }
+
+    const scriptsWithoutMP3 = scriptsToShow.filter(s => s && !s.has_mp3);
+    const scriptsWithMP3 = scriptsToShow.filter(s => s && s.has_mp3);
+
     contentDiv.innerHTML = `
         <div class="section-header" style="border-bottom: 1px solid var(--border-color);">
-            <h3>📝 Scripts for ${product ? escapeHtml(product.name) : 'Selected Product'}</h3>
+            <h3>${displayTitle}</h3>
             <div class="section-actions">
-                <button class="btn btn-primary btn-sm" onclick="showCreateManualScriptModal(${productId})">
-                    <i class="fas fa-plus"></i> Manual Script
-                </button>
-                <button class="btn btn-success btn-sm" onclick="showAIScriptGenerationModal(${productId})">
-                    <i class="fas fa-robot"></i> AI Scripts
-                </button>
+                ${productId !== "all" ? `
+                    <button class="btn btn-primary btn-sm" onclick="showCreateManualScriptModal(${productId})">
+                        <i class="fas fa-plus"></i> Manual Script
+                    </button>
+                    <button class="btn btn-success btn-sm" onclick="showAIScriptGenerationModal(${productId})">
+                        <i class="fas fa-robot"></i> AI Scripts
+                    </button>
+                ` : ''}
                 ${scriptsWithoutMP3.length > 0 ? `
-                    <button class="btn btn-warning btn-sm" onclick="showBulkMP3GenerationModal(${productId})">
+                    <button class="btn btn-warning btn-sm" onclick="showBulkMP3GenerationModal('${productId}')">
                         <i class="fas fa-music"></i> Bulk MP3 (${scriptsWithoutMP3.length})
                     </button>
                 ` : ''}
             </div>
         </div>
         <div class="scripts-list" style="padding: 20px;">
-            ${currentScripts.length > 0 ? `
+            ${scriptsToShow.length > 0 ? `
                 <div class="scripts-summary" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <strong>📊 Summary:</strong> 
-                            ${currentScripts.length} scripts total | 
+                            ${scriptsToShow.length} scripts total | 
                             <span style="color: var(--success-color);">✅ ${scriptsWithMP3.length} with MP3</span> | 
                             <span style="color: var(--warning-color);">📝 ${scriptsWithoutMP3.length} pending MP3</span>
                         </div>
-                        ${scriptsWithoutMP3.length > 1 ? `
-                            <button class="btn btn-sm btn-success" onclick="showBulkMP3GenerationModal(${productId})">
+                        ${scriptsWithoutMP3.length > 1 && productId !== "all" ? `
+                            <button class="btn btn-sm btn-success" onclick="showBulkMP3GenerationModal('${productId}')">
                                 <i class="fas fa-music"></i> Generate All MP3s
                             </button>
                         ` : ''}
                     </div>
                 </div>
-                ${currentScripts.map(script => createScriptCard(script)).join('')}
+                ${scriptsToShow.map(script => createScriptCard(script)).join('')}
             ` : `
                 <div class="text-center" style="padding: 40px;">
                     <i class="fas fa-file-alt" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 15px;"></i>
                     <h3>No scripts found</h3>
-                    <p>Generate some AI scripts to get started!</p>
-                    <button class="btn btn-primary mt-10" onclick="showAIScriptGenerationModal(${productId})">
-                        <i class="fas fa-robot"></i> Generate AI Scripts
-                    </button>
+                    ${productId !== "all" ? `
+                        <p>Generate some AI scripts to get started!</p>
+                        <button class="btn btn-primary mt-10" onclick="showAIScriptGenerationModal(${productId})">
+                            <i class="fas fa-robot"></i> Generate AI Scripts
+                        </button>
+                    ` : '<p>No scripts available from any products.</p>'}
                 </div>
             `}
         </div>
@@ -418,6 +479,7 @@ function createScriptCard(script) {
                     ${script.target_emotion ? `<span class="status-badge" style="background: #e3f2fd; color: #1976d2;">🎭 ${script.target_emotion}</span>` : ''}
                     ${script.duration_estimate ? `<span class="text-secondary">⏱️ ~${script.duration_estimate}s</span>` : ''}
                     ${script.word_count ? `<span class="text-secondary">📝 ${script.word_count} words</span>` : ''}
+                    ${script.product_name ? `<span class="status-badge" style="background: #f3e5f5; color: #7b1fa2;">🏷️ ${escapeHtml(script.product_name)}</span>` : ''}
                 </div>
             </div>
             <div class="script-content" style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 15px; max-height: 300px; overflow-y: auto; line-height: 1.6;">
@@ -425,27 +487,20 @@ function createScriptCard(script) {
             </div>
             <div class="script-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
                 ${script.has_mp3 ? `
+                    <!-- ✅ มี MP3 แล้ว - แสดงปุ่ม Play และ Delete MP3 -->
                     <button class="btn btn-success btn-sm" onclick="playMP3(${script.id})" title="Play MP3 audio">
-                        <i class="fas fa-play"></i> Play
+                        <i class="fas fa-play"></i> Play Audio
                     </button>
-                    <button class="btn btn-info btn-sm" onclick="downloadMP3(${script.id})" title="Download MP3 file">
-                        <i class="fas fa-download"></i> Download
-                    </button>
-                    <button class="btn btn-warning btn-sm" onclick="viewScriptDetails(${script.id})" title="View script details">
-                        <i class="fas fa-eye"></i> Details
-                    </button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteMP3(${script.id})" title="Delete MP3 and unlock script">
+                    <button class="btn btn-danger btn-sm" onclick="deleteMP3(${script.id})" title="Delete MP3 and unlock script for editing">
                         <i class="fas fa-trash"></i> Delete MP3
                     </button>
                 ` : `
+                    <!-- ❌ ยังไม่มี MP3 - แสดงปุ่ม Edit และ Create MP3 -->
+                    <button class="btn btn-primary btn-sm" onclick="editScript(${script.id})" title="Edit script content">
+                        <i class="fas fa-edit"></i> Edit Script
+                    </button>
                     <button class="btn btn-success btn-sm" onclick="generateMP3ForScript(${script.id})" title="Generate MP3 from this script">
                         <i class="fas fa-music"></i> Create MP3
-                    </button>
-                    <button class="btn btn-secondary btn-sm" onclick="editScript(${script.id})" ${!script.can_edit ? 'disabled' : ''} title="${script.can_edit ? 'Edit script content' : 'Script locked - has MP3 files'}">
-                        <i class="fas fa-edit"></i> ${script.can_edit ? 'Edit' : 'Locked'}
-                    </button>
-                    <button class="btn btn-info btn-sm" onclick="viewScriptDetails(${script.id})" title="View script details">
-                        <i class="fas fa-eye"></i> Preview
                     </button>
                 `}
                 <button class="btn btn-danger btn-sm" onclick="deleteScript(${script.id}, '${escapeHtml(script.title)}')" title="Delete script and all MP3 files">
@@ -456,7 +511,7 @@ function createScriptCard(script) {
                 <div class="mp3-info" style="background: #e8f5e8; padding: 10px; border-radius: 6px; margin-top: 15px; font-size: 0.9rem;">
                     <strong>🎵 MP3 Information:</strong><br>
                     <span class="text-secondary">
-                        📁 Ready for live streaming | 
+                        🎧 Ready for live streaming | 
                         🔒 Script is locked (delete MP3 to edit) |
                         ⏱️ Est. duration: ${script.duration_estimate || 'Unknown'}s
                     </span>
@@ -598,49 +653,82 @@ async function viewScriptDetails(scriptId) {
 }
 
 async function editScript(scriptId) {
-    const script = currentScripts.find(s => s.id === scriptId);
-    if (!script) return;
+    try {
+        // 🔥 ดึงข้อมูลใหม่จาก server เสมอ
+        console.log('📝 Loading fresh script data for editing:', scriptId);
 
-    if (!script.can_edit) {
-        showAlert('ไม่สามารถแก้ไขสคริปต์ได้ เนื่องจากมี MP3 ผูกอยู่', 'warning');
-        return;
-    }
+        const response = await fetch(`/api/v1/dashboard/scripts/${scriptId}`);
+        if (!response.ok) {
+            throw new Error('Failed to load script data');
+        }
 
-    const modal = `
-        <div class="modal-overlay" onclick="closeModal()">
-            <div class="modal-content" onclick="event.stopPropagation()">
-                <div class="modal-header">
-                    <h3>แก้ไขสคริปต์: ${escapeHtml(script.title)}</h3>
-                    <button class="modal-close" onclick="closeModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label>ชื่อสคริปต์:</label>
-                        <input type="text" class="form-control" id="edit-script-title" value="${escapeHtml(script.title)}">
+        const script = await response.json();
+        console.log('📄 Fresh script data:', script);
+
+        // 🔥 ตรวจสอบให้เข้มงวด
+        if (script.has_mp3 === true) {
+            showAlert('❌ ไม่สามารถแก้ไขสคริปต์ได้ เนื่องจากมี MP3 ผูกอยู่', 'warning');
+            console.warn('🚫 Edit blocked - Script has MP3:', {
+                scriptId: scriptId,
+                has_mp3: script.has_mp3,
+                can_edit: script.can_edit
+            });
+            return;
+        }
+
+        if (script.can_edit === false) {
+            showAlert('❌ สคริปต์นี้ถูกล็อค ไม่สามารถแก้ไขได้', 'warning');
+            console.warn('🚫 Edit blocked - Script locked:', script);
+            return;
+        }
+
+        console.log('✅ Script is editable - showing modal');
+
+        // แสดง modal สำหรับแก้ไข
+        const modal = `
+            <div class="modal-overlay" onclick="closeModal()">
+                <div class="modal-content" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h3>✏️ แก้ไขสคริปต์: ${escapeHtml(script.title)}</h3>
+                        <button class="modal-close" onclick="closeModal()">&times;</button>
                     </div>
-                    <div class="form-group">
-                        <label>เนื้อหาสคริปต์:</label>
-                        <textarea class="form-control" id="edit-script-content" rows="10">${escapeHtml(script.content)}</textarea>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>ชื่อสคริปต์:</label>
+                            <input type="text" class="form-control" id="edit-script-title" value="${escapeHtml(script.title)}">
+                        </div>
+                        <div class="form-group">
+                            <label>เนื้อหาสคริปต์:</label>
+                            <textarea class="form-control" id="edit-script-content" rows="10">${escapeHtml(script.content)}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>อารมณ์:</label>
+                            <select class="form-control" id="edit-script-emotion">
+                                <option value="professional" ${script.target_emotion === 'professional' ? 'selected' : ''}>🎯 มืออาชีพ</option>
+                                <option value="friendly" ${script.target_emotion === 'friendly' ? 'selected' : ''}>😊 เป็นมิตร</option>
+                                <option value="excited" ${script.target_emotion === 'excited' ? 'selected' : ''}>🔥 ตื่นเต้น</option>
+                                <option value="confident" ${script.target_emotion === 'confident' ? 'selected' : ''}>💪 มั่นใจ</option>
+                                <option value="energetic" ${script.target_emotion === 'energetic' ? 'selected' : ''}>⚡ กระตือรือร้น</option>
+                                <option value="calm" ${script.target_emotion === 'calm' ? 'selected' : ''}>😌 สงบ</option>
+                                <option value="urgent" ${script.target_emotion === 'urgent' ? 'selected' : ''}>⏰ เร่งด่วน</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>อารมณ์:</label>
-                        <select class="form-control" id="edit-script-emotion">
-                            <option value="professional" ${script.target_emotion === 'professional' ? 'selected' : ''}>มืออาชีพ</option>
-                            <option value="friendly" ${script.target_emotion === 'friendly' ? 'selected' : ''}>เป็นมิตร</option>
-                            <option value="excited" ${script.target_emotion === 'excited' ? 'selected' : ''}>ตื่นเต้น</option>
-                        </select>
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" onclick="closeModal()">ยกเลิก</button>
+                        <button class="btn btn-primary" onclick="confirmUpdateScript(${scriptId})">
+                            <i class="fas fa-save"></i> บันทึก
+                        </button>
                     </div>
-                </div>
-                <div class="modal-actions">
-                    <button class="btn btn-secondary" onclick="closeModal()">ยกเลิก</button>
-                    <button class="btn btn-primary" onclick="confirmUpdateScript(${scriptId})">
-                        <i class="fas fa-save"></i> บันทึก
-                    </button>
                 </div>
             </div>
-        </div>
-    `;
-    showModal(modal);
+        `;
+        showModal(modal);
+
+    } catch (error) {
+        console.error('❌ Error loading script for editing:', error);
+        showAlert('ไม่สามารถโหลดข้อมูลสคริปต์ได้: ' + error.message, 'error');
+    }
 }
 
 async function confirmUpdateScript(scriptId) {
@@ -706,8 +794,11 @@ async function generateMP3ForScript(scriptId) {
     }
 
     try {
+        // 🆕 ดึงข้อมูล TTS Providers ที่มีอยู่
         const providersResponse = await fetch('/api/v1/dashboard/tts/providers');
         const providersData = await providersResponse.json();
+
+        console.log('🎤 Available TTS Providers:', providersData);
 
         const modal = `
             <div class="modal-overlay" onclick="closeModal()">
@@ -717,25 +808,27 @@ async function generateMP3ForScript(scriptId) {
                         <button class="modal-close" onclick="closeModal()">&times;</button>
                     </div>
                     <div class="modal-body">
+                        <!-- 🆕 TTS Provider Selection -->
                         <div class="form-group">
-                            <label class="form-label">Voice Persona:</label>
-                            <select class="form-control" id="voice-persona-select" onchange="updateEmotionOptions()">
-                                ${voicePersonas.map(persona => {
-            const provider = persona.tts_provider || 'basic';
-            const providerLabel = provider === 'edge' ? '🎭 Enhanced' :
-                provider === 'elevenlabs' ? '🤖 Premium AI' :
-                    provider === 'azure' ? '🏢 Enterprise' : '📢 Basic';
-            const premiumLabel = persona.is_premium ? ' 💎' : '';
+                            <label class="form-label">🎤 TTS Provider:</label>
+                            <select class="form-control" id="tts-provider-select" onchange="updateProviderVoices()">
+                                ${generateProviderOptions(providersData.providers)}
+                            </select>
+                            <small class="text-secondary" id="provider-description">Select TTS provider for audio generation.</small>
+                        </div>
 
-            return `<option value="${persona.id}" data-provider="${provider}" data-emotions='${JSON.stringify(persona.emotional_range || [])}'>
-                                        ${providerLabel} ${escapeHtml(persona.name)}${premiumLabel}
-                                    </option>`;
-        }).join('')}
+                        <!-- Voice Selection (filtered by provider) -->
+                        <div class="form-group">
+                            <label class="form-label">🗣️ Voice Persona:</label>
+                            <select class="form-control" id="voice-persona-select" onchange="updateEmotionOptions()">
+                                <!-- Options will be populated by updateProviderVoices() -->
                             </select>
                             <small class="text-secondary">Enhanced voices support emotional expressions.</small>
                         </div>
+
+                        <!-- Emotion Selection -->
                         <div class="form-group">
-                            <label class="form-label">Emotion & Mood:</label>
+                            <label class="form-label">🎭 Emotion & Mood:</label>
                             <select class="form-control" id="emotion-select">
                                 <option value="professional">🎯 Professional</option>
                                 <option value="friendly">😊 Friendly</option>
@@ -750,23 +843,30 @@ async function generateMP3ForScript(scriptId) {
                             </select>
                             <small class="text-secondary" id="emotion-description">Select the emotional tone.</small>
                         </div>
+
+                        <!-- Emotion Intensity -->
                         <div class="form-group">
-                            <label class="form-label">Emotion Intensity:</label>
+                            <label class="form-label">🌟 Emotion Intensity:</label>
                             <input type="range" class="form-control" id="emotion-intensity" min="0.5" max="2.0" step="0.1" value="1.2">
                             <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
                                 <span>Subtle</span><span id="intensity-value">1.2</span><span>Intense</span>
                             </div>
                         </div>
+
+                        <!-- Audio Quality -->
                         <div class="form-group">
-                            <label class="form-label">Audio Quality:</label>
+                            <label class="form-label">🔊 Audio Quality:</label>
                             <select class="form-control" id="mp3-quality-select">
-                                <option value="high">🔊 High Quality (Premium)</option>
+                                <option value="enhanced">✨ Enhanced (Best)</option>
+                                <option value="high">📊 High Quality</option>
                                 <option value="medium" selected>🎵 Medium Quality (Recommended)</option>
                                 <option value="low">📻 Low Quality (Fast)</option>
                             </select>
                         </div>
+
+                        <!-- Script Preview -->
                         <div class="alert alert-info">
-                            <strong>📝 Script Preview:</strong><br>
+                            <strong>📄 Script Preview:</strong><br>
                             <div style="max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px;">
                                 ${formatEmotionalMarkup(script.content)}
                             </div>
@@ -782,14 +882,187 @@ async function generateMP3ForScript(scriptId) {
             </div>
         `;
         showModal(modal);
+
+        // Initialize modal functionality
         setupEnhancedTTSEventListeners();
+        updateProviderVoices(); // Load initial voices
 
     } catch (error) {
         console.error('Error loading TTS providers:', error);
         showAlert('Failed to load TTS provider info. Using basic mode.', 'warning');
-        // Fallback to a simpler modal if needed
+        generateMP3ForScriptFallback(scriptId); // Fallback to simple modal
     }
 }
+
+function generateMP3ForScriptFallback(scriptId) {
+    const script = currentScripts.find(s => s.id === scriptId);
+
+    const modal = `
+        <div class="modal-overlay" onclick="closeModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>🎵 MP3 Generation for: ${escapeHtml(script.title)}</h3>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Voice Persona:</label>
+                        <select class="form-control" id="voice-persona-select">
+                            ${voicePersonas.map(persona => `<option value="${persona.id}">${escapeHtml(persona.name)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Quality:</label>
+                        <select class="form-control" id="mp3-quality-select">
+                            <option value="medium" selected>Medium (Recommended)</option>
+                            <option value="high">High</option>
+                            <option value="low">Low (Fast)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-success" onclick="confirmBasicMP3Generation(${scriptId})">
+                        <i class="fas fa-music"></i> Generate MP3
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    showModal(modal);
+}
+
+async function confirmBasicMP3Generation(scriptId) {
+    const voicePersonaId = document.getElementById('voice-persona-select').value;
+    const quality = document.getElementById('mp3-quality-select').value;
+
+    try {
+        closeModal();
+        showAlert('🎵 Generating MP3...', 'info');
+
+        const response = await fetch('/api/v1/dashboard/mp3/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                script_ids: [scriptId],
+                voice_persona_id: parseInt(voicePersonaId),
+                quality: quality
+            })
+        });
+
+        if (response.ok) {
+            showAlert('✅ MP3 generation started!', 'success');
+            pollMP3Generation(scriptId);
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to start MP3 generation');
+        }
+
+    } catch (error) {
+        console.error('Error generating MP3:', error);
+        showAlert('Failed to generate MP3: ' + error.message, 'error');
+    }
+}
+
+function generateProviderOptions(providers) {
+    if (!providers) {
+        return '<option value="edge">🎭 Microsoft Edge TTS (Default)</option>';
+    }
+
+    let options = '';
+
+    // Sort providers by quality/preference
+    const providerOrder = ['edge', 'azure', 'elevenlabs', 'google', 'basic'];
+
+    providerOrder.forEach(providerKey => {
+        const provider = providers[providerKey];
+        if (provider && provider.available) {
+            const providerInfo = getProviderInfo(providerKey, provider);
+            options += `<option value="${providerKey}" data-voices='${JSON.stringify(provider.voices || {})}'>${providerInfo.icon} ${providerInfo.name} ${providerInfo.badge}</option>`;
+        }
+    });
+
+    return options || '<option value="edge">🎭 Microsoft Edge TTS (Default)</option>';
+}
+
+function getProviderInfo(key, provider) {
+    const providerMap = {
+        'edge': {
+            name: 'Microsoft Edge TTS',
+            icon: '🎭',
+            badge: '(Best Quality)'
+        },
+        'azure': {
+            name: 'Azure Speech Services',
+            icon: '🏢',
+            badge: '(Enterprise)'
+        },
+        'elevenlabs': {
+            name: 'ElevenLabs AI',
+            icon: '🤖',
+            badge: '(Premium AI)'
+        },
+        'google': {
+            name: 'Google Text-to-Speech',
+            icon: '🔍',
+            badge: '(Standard)'
+        },
+        'basic': {
+            name: 'Basic TTS',
+            icon: '📢',
+            badge: '(Free)'
+        }
+    };
+
+    return providerMap[key] || {
+        name: key.charAt(0).toUpperCase() + key.slice(1),
+        icon: '🎤',
+        badge: ''
+    };
+}
+
+function updateProviderVoices() {
+    const providerSelect = document.getElementById('tts-provider-select');
+    const voiceSelect = document.getElementById('voice-persona-select');
+    const providerDesc = document.getElementById('provider-description');
+
+    if (!providerSelect || !voiceSelect) return;
+
+    const selectedProvider = providerSelect.value;
+    const selectedOption = providerSelect.options[providerSelect.selectedIndex];
+
+    // Update provider description
+    if (providerDesc) {
+        const descriptions = {
+            'edge': '🎭 Microsoft Edge TTS - High quality, natural voices with emotional support',
+            'azure': '🏢 Azure Speech Services - Enterprise-grade TTS with advanced features',
+            'elevenlabs': '🤖 ElevenLabs AI - Premium AI-powered voices with realistic expression',
+            'google': '🔍 Google TTS - Standard quality, reliable performance',
+            'basic': '📢 Basic TTS - Simple text-to-speech, free tier'
+        };
+        providerDesc.textContent = descriptions[selectedProvider] || 'Select TTS provider for audio generation.';
+    }
+
+    // Filter voice personas by selected provider
+    const filteredVoices = voicePersonas.filter(persona =>
+        !persona.tts_provider || persona.tts_provider === selectedProvider
+    );
+
+    // Update voice options
+    voiceSelect.innerHTML = filteredVoices.map(persona => {
+        const providerLabel = getProviderInfo(persona.tts_provider || selectedProvider, {}).icon;
+        const premiumLabel = persona.is_premium ? ' 💎' : '';
+
+        return `<option value="${persona.id}" data-provider="${persona.tts_provider || selectedProvider}" data-emotions='${JSON.stringify(persona.emotional_range || [])}'>
+                    ${providerLabel} ${escapeHtml(persona.name)}${premiumLabel}
+                </option>`;
+    }).join('');
+
+    // Update emotions for first voice
+    updateEmotionOptions();
+}
+
+
 
 function setupEnhancedTTSEventListeners() {
     const intensitySlider = document.getElementById('emotion-intensity');
@@ -823,6 +1096,8 @@ async function confirmEnhancedMP3Generation(scriptId) {
         showAlert('Script ID is missing.', 'error');
         return;
     }
+
+    const ttsProvider = document.getElementById('tts-provider-select').value;
     const voicePersonaId = document.getElementById('voice-persona-select').value;
     const emotion = document.getElementById('emotion-select').value;
     const quality = document.getElementById('mp3-quality-select').value;
@@ -830,7 +1105,7 @@ async function confirmEnhancedMP3Generation(scriptId) {
 
     try {
         closeModal();
-        showAlert('🎵 Generating Enhanced MP3 with emotional settings...', 'info');
+        showAlert(`🎵 Generating Enhanced MP3 with ${ttsProvider.toUpperCase()} TTS...`, 'info');
 
         const response = await fetch('/api/v1/dashboard/mp3/generate', {
             method: 'POST',
@@ -838,14 +1113,16 @@ async function confirmEnhancedMP3Generation(scriptId) {
             body: JSON.stringify({
                 script_ids: [scriptId],
                 voice_persona_id: parseInt(voicePersonaId),
-                quality: 'enhanced', // Specify enhanced quality
+                tts_provider: ttsProvider, // 🆕 เพิ่ม provider selection
+                quality: quality,
                 emotion: emotion,
                 intensity: intensity
             })
         });
 
         if (response.ok) {
-            showAlert('✅ Enhanced MP3 generation started!', 'success');
+            const result = await response.json();
+            showAlert(`✅ Enhanced MP3 generation started with ${ttsProvider.toUpperCase()}!`, 'success');
             pollMP3Generation(scriptId);
         } else {
             const errorData = await response.json();
@@ -885,32 +1162,197 @@ async function pollMP3Generation(scriptId, attempts = 0) {
 }
 
 async function playMP3(scriptId) {
-    showAlert(`🎵 Audio player implementation is pending. MP3 for script ID ${scriptId} is ready.`, 'info');
+    try {
+        console.log('🎵 Playing MP3 for script:', scriptId);
+
+        // ✨ ดึงข้อมูล MP3 file จาก API ก่อน
+        const mp3InfoResponse = await fetch(`/api/v1/dashboard/mp3/status/${scriptId}`);
+        if (!mp3InfoResponse.ok) {
+            throw new Error('Failed to get MP3 file information');
+        }
+
+        const mp3Data = await mp3InfoResponse.json();
+        console.log('📁 MP3 Data:', mp3Data);
+
+        // ตรวจสอบว่ามี MP3 files หรือไม่
+        if (!mp3Data.mp3_files || mp3Data.mp3_files.length === 0) {
+            showAlert('🚫 This script does not have an MP3 file yet.', 'warning');
+            return;
+        }
+
+        // ใช้ไฟล์แรกที่มีสถานะ completed
+        const completedMP3 = mp3Data.mp3_files.find(file => file.status === 'completed');
+        if (!completedMP3) {
+            showAlert('🚫 No completed MP3 file found for this script.', 'warning');
+            return;
+        }
+
+        // ✨ ใช้ชื่อไฟล์จริงจาก database
+        const audioUrl = `/static/audio/${completedMP3.filename}`;
+        console.log('🎧 Audio URL:', audioUrl);
+
+        // ตรวจสอบว่ามี audio player อยู่แล้วหรือไม่
+        let existingPlayer = document.getElementById('mp3-player');
+        if (existingPlayer) {
+            existingPlayer.remove();
+        }
+
+        // สร้าง audio player ใหม่
+        const audioPlayer = document.createElement('audio');
+        audioPlayer.id = 'mp3-player';
+        audioPlayer.controls = true;
+        audioPlayer.autoplay = true;
+        audioPlayer.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 2px solid var(--primary-color);
+            max-width: 300px;
+        `;
+
+        // เพิ่ม source
+        const source = document.createElement('source');
+        source.src = audioUrl;
+        source.type = 'audio/mpeg';
+        audioPlayer.appendChild(source);
+
+        // เพิ่ม event listeners
+        audioPlayer.addEventListener('loadstart', () => {
+            showAlert('🎵 Loading audio...', 'info');
+        });
+
+        audioPlayer.addEventListener('canplay', () => {
+            showAlert(`🎧 Playing: ${mp3Data.script_title}`, 'success');
+        });
+
+        audioPlayer.addEventListener('error', (e) => {
+            console.error('Audio playback error:', e);
+            showAlert(`❌ Failed to play audio. File: ${completedMP3.filename}`, 'error');
+            audioPlayer.remove();
+        });
+
+        audioPlayer.addEventListener('ended', () => {
+            showAlert('✅ Playback completed!', 'success');
+            setTimeout(() => {
+                if (audioPlayer.parentNode) {
+                    audioPlayer.remove();
+                }
+            }, 3000);
+        });
+
+        // เพิ่ม title display
+        const titleDiv = document.createElement('div');
+        titleDiv.style.cssText = `
+            background: var(--primary-color);
+            color: white;
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 6px 6px 0 0;
+            font-weight: bold;
+            text-align: center;
+        `;
+        titleDiv.textContent = mp3Data.script_title || `Script ${scriptId}`;
+
+        // เพิ่ม close button
+        const closeButton = document.createElement('button');
+        closeButton.innerHTML = '❌';
+        closeButton.style.cssText = `
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: var(--error-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            font-size: 12px;
+        `;
+        closeButton.onclick = () => {
+            audioPlayer.pause();
+            wrapper.remove();
+            showAlert('🔇 Audio stopped', 'info');
+        };
+
+        // สร้าง wrapper
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 2px solid var(--primary-color);
+        `;
+
+        wrapper.appendChild(titleDiv);
+        wrapper.appendChild(audioPlayer);
+        wrapper.appendChild(closeButton);
+
+        // เพิ่มลงใน DOM
+        document.body.appendChild(wrapper);
+
+        console.log('🎧 Audio player created for:', audioUrl);
+
+    } catch (error) {
+        console.error('Error playing MP3:', error);
+        showAlert('❌ Error playing audio: ' + error.message, 'error');
+    }
 }
 
 async function deleteMP3(scriptId) {
-    if (!confirm('คุณต้องการลบ MP3 ไฟล์นี้หรือไม่?\n\nการลบจะปลดล็อคการแก้ไขสคริปต์')) {
-        return;
-    }
+    if (!confirm('คุณต้องการลบ MP3 ไฟล์นี้หรือไม่?')) return;
+
     try {
         const response = await fetch(`/api/v1/dashboard/scripts/${scriptId}/mp3`, {
             method: 'DELETE'
         });
+
         if (response.ok) {
-            showAlert('✅ MP3 file deleted successfully! สคริปต์ถูกปลดล็อคแล้ว', 'success');
-            await loadScripts();
-            await loadDashboardStats();
+            showAlert('✅ MP3 deleted! สคริปต์ถูกปลดล็อคแล้ว', 'success');
+
+            // 🔥 แก้ไขจุดนี้ - รีเฟรชข้อมูลทันที
+            console.log('🔄 Force refreshing scripts after MP3 deletion...');
+
+            // อัปเดตใน memory ก่อน
+            const scriptIndex = currentScripts.findIndex(s => s.id === scriptId);
+            if (scriptIndex !== -1) {
+                currentScripts[scriptIndex].has_mp3 = false;
+                currentScripts[scriptIndex].can_edit = true;
+            }
+
+            // 🔥 บังคับโหลดใหม่ทันที
+            setTimeout(async () => {
+                await loadScripts();
+                console.log('✅ Scripts force reloaded');
+            }, 500);
+
         } else {
-            throw new Error('Failed to delete MP3 file');
+            throw new Error('Failed to delete MP3');
         }
     } catch (error) {
-        console.error('Error deleting MP3:', error);
+        console.error('❌ Error deleting MP3:', error);
         showAlert('Failed to delete MP3: ' + error.message, 'error');
     }
 }
 
 async function showBulkMP3GenerationModal(productId) {
-    const productScripts = currentScripts.filter(s => s.product_id === productId && !s.has_mp3);
+    let productScripts;
+
+    if (productId === "all") {
+        // ดึงสคริปต์ทั้งหมดที่ยังไม่มี MP3
+        productScripts = currentScripts.filter(s => s && !s.has_mp3);
+    } else {
+        // ดึงสคริปต์ของสินค้าที่เลือก
+        productScripts = currentScripts.filter(s => s.product_id == productId && !s.has_mp3);
+    }
 
     if (!productScripts.length) {
         showAlert('No scripts available for MP3 generation.', 'warning');
@@ -921,10 +1363,17 @@ async function showBulkMP3GenerationModal(productId) {
         return;
     }
 
+    const modalTitle = productId === "all" ?
+        `🎵 Bulk MP3 Generation - All Products (${productScripts.length} scripts)` :
+        `🎵 Bulk MP3 Generation`;
+
     const modal = `
         <div class="modal-overlay" onclick="closeModal()">
             <div class="modal-content" onclick="event.stopPropagation()">
-                <div class="modal-header"><h3>🎵 Bulk MP3 Generation</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+                <div class="modal-header">
+                    <h3>${modalTitle}</h3>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
                 <div class="modal-body">
                     <div class="form-group">
                         <label class="form-label">Select Scripts:</label>
@@ -933,6 +1382,7 @@ async function showBulkMP3GenerationModal(productId) {
                                 <label style="display: block; margin-bottom: 8px;">
                                     <input type="checkbox" id="script-${script.id}" value="${script.id}" checked style="margin-right: 8px;">
                                     ${escapeHtml(script.title)}
+                                    ${productId === "all" && script.product_name ? `<span style="color: #666;"> (${escapeHtml(script.product_name)})</span>` : ''}
                                 </label>
                             `).join('')}
                         </div>
@@ -951,13 +1401,16 @@ async function showBulkMP3GenerationModal(productId) {
                         <label class="form-label">Quality:</label>
                         <select class="form-control" id="bulk-mp3-quality-select">
                             <option value="medium">Medium (Recommended)</option>
-                            <option value="high">High</option><option value="low">Low (Fast)</option>
+                            <option value="high">High</option>
+                            <option value="low">Low (Fast)</option>
                         </select>
                     </div>
                 </div>
                 <div class="modal-actions">
                     <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    <button class="btn btn-success" onclick="confirmBulkMP3Generation()"><i class="fas fa-music"></i> Generate All</button>
+                    <button class="btn btn-success" onclick="confirmBulkMP3Generation()">
+                        <i class="fas fa-music"></i> Generate All
+                    </button>
                 </div>
             </div>
         </div>

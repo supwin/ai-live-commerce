@@ -279,29 +279,103 @@ async def get_tts_providers():
     ดึงรายการ TTS providers ที่ใช้ได้และความสามารถ
     """
     try:
-        if hasattr(tts_service, 'get_available_providers'):
-            providers = tts_service.get_available_providers()
-        else:
-            # Fallback สำหรับ basic TTS
-            providers = {
-                "basic": {
-                    "available": True,
-                    "voices": {"th": "Thai", "en": "English"},
-                    "supports_emotions": False,
-                    "quality": "basic",
-                    "cost": "free"
-                }
+        from app.core.config import get_settings
+        
+        settings = get_settings()
+        
+        # 🔥 ใช้ configuration ใหม่จาก settings
+        providers_config = settings.get_tts_providers_status()
+        
+        # 🔥 แปลงเป็นรูปแบบที่ Frontend ต้องการ
+        providers = {}
+        
+        for provider_key, config in providers_config.items():
+            providers[provider_key] = {
+                "available": config["available"],
+                "voices": get_provider_voices(provider_key, config),
+                "quality": get_provider_quality(provider_key, config),
+                "cost": config.get("type", "unknown"),
+                "supports_emotions": provider_key in ["elevenlabs", "azure", "edge"],
+                "note": config["note"]
             }
+        
+        print(f"🎤 Sending {len(providers)} providers to frontend:")
+        for name, info in providers.items():
+            print(f"   {'✅' if info['available'] else '❌'} {name}: {info['note']}")
         
         return {
             "providers": providers,
-            "enhanced_tts": hasattr(tts_service, 'generate_emotional_speech'),
-            "recommended": "edge" if providers.get("edge", {}).get("available") else "basic",
-            "supported_emotions": hasattr(tts_service, 'get_emotions_for_provider')
+            "enhanced_tts": True,
+            "recommended": get_recommended_provider(providers),
+            "supported_emotions": ["professional", "friendly", "excited", "confident", "energetic", "calm", "cheerful", "gentle", "serious", "urgent"]
         }
         
     except Exception as e:
-        handle_service_error(e, "TTS Providers")
+        print(f"❌ Error in get_tts_providers: {e}")
+        # Fallback
+        return {
+            "providers": {
+                "edge": {
+                    "available": True,
+                    "voices": {"th": ["th-TH-PremwadeeNeural"], "en": ["en-US-AriaNeural"]},
+                    "quality": "high",
+                    "cost": "free",
+                    "supports_emotions": True,
+                    "note": "Microsoft Edge TTS"
+                }
+            },
+            "enhanced_tts": True,
+            "recommended": "edge"
+        }
+
+# 🆕 Helper functions
+def get_provider_voices(provider_key: str, config: dict) -> dict:
+    """Get voices for each provider"""
+    voice_map = {
+        "edge": {
+            "th": ["th-TH-PremwadeeNeural", "th-TH-AcharaNeural", "th-TH-NiwatNeural"],
+            "en": ["en-US-AriaNeural", "en-US-JennyNeural", "en-US-AndrewNeural"]
+        },
+        "elevenlabs": {
+            "en": ["Rachel", "Drew", "Clyde", "Paul", "Bella", "Antoni"],
+            "multilingual": ["Eleven Multilingual v2", "Eleven Multilingual v1"]
+        } if config["available"] else {},
+        "azure": {
+            "th": ["th-TH-AcharaNeural", "th-TH-NiwatNeural"],
+            "en": ["en-US-AriaNeural", "en-US-JennyNeural"]
+        } if config["available"] else {},
+        "google": {
+            "th": ["th-TH-Standard-A"],
+            "en": ["en-US-Standard-A", "en-US-Standard-B"]
+        } if config["available"] else {},
+        "basic": {
+            "th": ["thai-basic"],
+            "en": ["english-basic"]
+        }
+    }
+    return voice_map.get(provider_key, {})
+
+def get_provider_quality(provider_key: str, config: dict) -> str:
+    """Get quality level for each provider"""
+    quality_map = {
+        "edge": "high",
+        "elevenlabs": "premium",
+        "azure": "enterprise", 
+        "google": "standard",
+        "basic": "basic"
+    }
+    return quality_map.get(provider_key, "unknown")
+
+def get_recommended_provider(providers: dict) -> str:
+    """Get recommended provider based on availability"""
+    # Priority order
+    priority = ["elevenlabs", "edge", "azure", "google", "basic"]
+    
+    for provider in priority:
+        if providers.get(provider, {}).get("available", False):
+            return provider
+    
+    return "edge"  # fallback
 
 @router.post("/tts/test", response_model=TTSTestResponse)
 async def test_tts_generation(request: TTSTestRequest):

@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     # Google TTS (Optional)
     GOOGLE_TTS_API_KEY: Optional[str] = None
     
+    AZURE_SPEECH_KEY: Optional[str] = None
+    AZURE_SPEECH_REGION: str = "southeastasia"
+    MICROSOFT_SPEECH_KEY: Optional[str] = None
+    MICROSOFT_SPEECH_REGION: str = "southeastasia"
+
     # OBS Settings
     OBS_WEBSOCKET_HOST: str = "localhost"
     OBS_WEBSOCKET_PORT: int = 4455
@@ -216,6 +221,92 @@ class Settings(BaseSettings):
             "language": self.TTS_DEFAULT_LANGUAGE
         }
 
+    def is_elevenlabs_configured(self) -> bool:
+        """ตรวจสอบว่า ElevenLabs API key ได้ถูกตั้งค่าแล้วหรือไม่"""
+        configured = bool(self.ELEVENLABS_API_KEY and self.ELEVENLABS_API_KEY.strip())
+        print(f"🔍 ElevenLabs check: {'✅ Configured' if configured else '❌ Missing'}")
+        if configured:
+            print(f"🔑 Key preview: {self.ELEVENLABS_API_KEY[:15]}...")
+        return configured
+
+    def is_azure_tts_configured(self) -> bool:
+        """ตรวจสอบ Azure Speech Services configuration"""
+        return bool(self.AZURE_SPEECH_KEY and self.AZURE_SPEECH_REGION)
+
+    def is_google_tts_configured(self) -> bool:
+        """ตรวจสอบ Google TTS configuration"""
+        return bool(self.GOOGLE_TTS_API_KEY)
+
+    def get_tts_providers_status(self) -> Dict[str, Any]:
+        """ส่งคืนสถานะการตั้งค่า TTS providers ทั้งหมด"""
+        return {
+            "edge": {
+                "configured": True,  # Microsoft Edge TTS ใช้ได้เสมอ
+                "available": True,
+                "type": "free",
+                "note": "Built-in Microsoft Edge TTS"
+            },
+            "elevenlabs": {
+                "configured": self.is_elevenlabs_configured(),
+                "available": self.is_elevenlabs_configured(),
+                "type": "premium",
+                "api_key_length": len(self.ELEVENLABS_API_KEY) if self.ELEVENLABS_API_KEY else 0,
+                "note": "Premium AI voices" if self.is_elevenlabs_configured() else "API key required"
+            },
+            "azure": {
+                "configured": self.is_azure_tts_configured(),
+                "available": self.is_azure_tts_configured(),
+                "type": "enterprise",
+                "region": self.AZURE_SPEECH_REGION,
+                "note": "Enterprise TTS" if self.is_azure_tts_configured() else "API key required"
+            },
+            "google": {
+                "configured": self.is_google_tts_configured(),
+                "available": self.is_google_tts_configured(),
+                "type": "standard",
+                "note": "Google Cloud TTS" if self.is_google_tts_configured() else "API key required"
+            },
+            "basic": {
+                "configured": True,
+                "available": True,
+                "type": "basic",
+                "note": "Basic text-to-speech"
+            }
+        }
+
+    def debug_tts_configuration(self) -> None:
+        """Debug TTS configuration"""
+        print("\n" + "=" * 50)
+        print("🔍 TTS Configuration Debug")
+        print("=" * 50)
+        
+        # ตรวจสอบ .env file
+        env_file_exists = os.path.exists('.env')
+        print(f"📁 .env file exists: {env_file_exists}")
+        
+        # ตรวจสอบ environment variables
+        elevenlabs_env = os.getenv('ELEVENLABS_API_KEY')
+        print(f"🌍 ELEVENLABS_API_KEY from environment: {'✅ Found' if elevenlabs_env else '❌ Not found'}")
+        if elevenlabs_env:
+            print(f"🔑 Environment key preview: {elevenlabs_env[:15]}...")
+        
+        # ตรวจสอบ settings object
+        print(f"⚙️ Settings object key: {'✅ Loaded' if self.ELEVENLABS_API_KEY else '❌ Not loaded'}")
+        if self.ELEVENLABS_API_KEY:
+            print(f"🔑 Settings key preview: {self.ELEVENLABS_API_KEY[:15]}...")
+        
+        # ตรวจสอบการทำงานของ helper methods
+        print(f"✅ is_elevenlabs_configured(): {self.is_elevenlabs_configured()}")
+        
+        # แสดงสถานะ providers ทั้งหมด
+        print("\n📊 All TTS Providers Status:")
+        providers_status = self.get_tts_providers_status()
+        for provider, status in providers_status.items():
+            icon = "✅" if status['available'] else "❌"
+            print(f"   {icon} {provider}: {status['note']}")
+        
+        print("=" * 50 + "\n")    
+        
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -288,7 +379,23 @@ def print_startup_info():
         print("   💡 AI script generation will use simulation mode")
     print("=" * 60)
     print("🎵 TTS Configuration:")
-    print(f"   Provider: {settings.TTS_PROVIDER}")
+    print(f"   Default Provider: {settings.TTS_PROVIDER}")
     print(f"   Thai Voice: {settings.TTS_VOICE_TH}")
     print(f"   Language: {settings.TTS_DEFAULT_LANGUAGE}")
+    
+    # ✅ เพิ่มส่วนนี้ - แสดงสถานะ TTS providers
+    print("\n🎤 TTS Providers Status:")
+    providers_status = settings.get_tts_providers_status()
+    for provider, status in providers_status.items():
+        icon = "✅" if status['available'] else "❌"
+        print(f"   {icon} {provider.capitalize()}: {status['note']}")
+    
     print("=" * 60)
+    
+    # ✅ เรียก debug หาก debug mode เปิด
+    if settings.DEBUG:
+        settings.debug_tts_configuration()
+
+
+
+
