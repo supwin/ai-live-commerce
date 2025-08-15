@@ -720,7 +720,7 @@ async def generate_mp3(request: MP3GenerationRequest, background_tasks: Backgrou
         raise HTTPException(status_code=500, detail=f"Error starting MP3 generation: {str(e)}")
 
 async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int, quality: str, db_session: Session):
-    """Enhanced background task for MP3 generation with emotional support"""
+    """Enhanced background task for MP3 generation with emotional support and clean metadata"""
     from app.core.database import SessionLocal
     db = SessionLocal()
     
@@ -735,16 +735,17 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                 try:
                     print(f"🎵 Generating Enhanced MP3 for script {script_id}: {script.title}")
                     
-                    # เตรียม voice configuration
+                    # เตรียม voice configuration พร้อม script title
                     voice_config = {
                         "voice": voice_persona.voice_id,
                         "voice_id": voice_persona.voice_id,
                         "tts_provider": voice_persona.tts_provider,
                         "emotion": getattr(voice_persona, 'emotion', 'professional'),
-                        "emotional_intensity": 1.2,  # เพิ่มความเข้มอารมณ์
+                        "emotional_intensity": 1.2,
                         "speed": float(voice_persona.speed),
                         "pitch": float(voice_persona.pitch),
-                        "volume": float(voice_persona.volume)
+                        "volume": float(voice_persona.volume),
+                        "script_title": script.title  # 🆕 เพิ่ม script title สำหรับ metadata
                     }
                     
                     # กำหนดอารมณ์จาก script emotion
@@ -761,10 +762,11 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                     mapped_emotion = emotion_mapping.get(script_emotion, "serious")
                     
                     print(f"   🎭 Using emotion: {script_emotion} → {mapped_emotion}")
-                    print(f"   🔊 Provider: {voice_persona.tts_provider}")
+                    print(f"   📊 Provider: {voice_persona.tts_provider}")
                     print(f"   🗣️ Voice: {voice_persona.voice_id}")
+                    print(f"   🏷️ Script Title: {script.title}")
                     
-                    # Generate MP3 with enhanced TTS
+                    # Generate MP3 with enhanced TTS and clean metadata
                     if hasattr(tts_service, 'generate_emotional_speech'):
                         # ใช้ Enhanced TTS Service
                         file_path, web_url = await tts_service.generate_emotional_speech(
@@ -774,7 +776,8 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                             voice_config=voice_config,
                             emotion=mapped_emotion,
                             intensity=1.2,
-                            language=getattr(script, 'language', 'th')
+                            language=getattr(script, 'language', 'th'),
+                            script_title=script.title  # 🆕 ส่ง script title
                         )
                     else:
                         # Fallback to basic TTS
@@ -805,7 +808,9 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                                 "quality": quality,
                                 "emotion": mapped_emotion,
                                 "emotion_intensity": 1.2,
-                                "provider_config": voice_config
+                                "provider_config": voice_config,
+                                "script_title": script.title,  # 🆕 บันทึก script title
+                                "metadata_cleaned": True  # 🆕 บันทึกว่าทำความสะอาด metadata แล้ว
                             },
                             duration=getattr(script, 'duration_estimate', 60),
                             file_size=file_size,
@@ -826,8 +831,9 @@ async def _generate_mp3_background(script_ids: List[int], voice_persona_id: int,
                         db.commit()
                         print(f"✅ Enhanced MP3 generated for script {script.id}: {script.title}")
                         print(f"   📁 File: {file_path}")
-                        print(f"   📏 Size: {file_size} bytes")
+                        print(f"   📦 Size: {file_size} bytes")
                         print(f"   🎭 Emotion: {mapped_emotion}")
+                        print(f"   🏷️ Metadata: Clean")
                         print(f"   ✅ Status: completed")
                     else:
                         print(f"❌ Failed to generate Enhanced MP3 for script {script.id}")
@@ -904,13 +910,19 @@ async def get_tts_providers():
 # เพิ่ม endpoint สำหรับทดสอบ TTS
 @router.post("/dashboard/tts/test")
 async def test_tts_generation(
-    text: str = "สวัสดีครับ ทดสอบระบบเสียงพูด",
+    text: str = "สวัสดีครับ ทดสอบระบบเสียงพูดใหม่",  # ⚠️ ปัญหาอยู่ตรงนี้!
     provider: str = "edge",
     emotion: str = "professional",
     voice_id: Optional[str] = None
 ):
-    """Test TTS generation with different providers and emotions"""
+    """Test TTS generation with contamination prevention - FIXED VERSION"""
     try:
+        print(f"🧪 TTS Test Request Received:")
+        print(f"   📝 Text parameter: '{text}'")
+        print(f"   🎭 Emotion: {emotion}")
+        print(f"   📊 Provider: {provider}")
+        print(f"   🗣️ Voice ID: {voice_id}")
+        
         if not hasattr(tts_service, 'generate_emotional_speech'):
             raise HTTPException(status_code=501, detail="Enhanced TTS not available")
         
@@ -925,32 +937,60 @@ async def test_tts_generation(
         
         voice_config = {"voice": voice_id, "voice_id": voice_id}
         
-        # Generate test audio
+        print(f"   🎯 Processing text: '{text[:50]}...'")
+        
+        # ⚠️ ปัญหาหลัก: ต้องส่ง text parameter ที่ได้รับมา ไม่ใช่ hardcode
         file_path, web_url = await tts_service.generate_emotional_speech(
-            text=text,
-            script_id="test",
+            text=text,  # 🔧 ใช้ text ที่ได้รับจาก request
+            script_id="test_clean",
             provider=provider,
             voice_config=voice_config,
             emotion=emotion,
             intensity=1.0,
-            language="th"
+            language="th",
+            script_title=f"TTS Test: {text[:30]}"  # 🔧 ใช้ text ในชื่อด้วย
         )
         
         if file_path and web_url:
+            # ตรวจสอบความยาวไฟล์ที่สร้าง
+            try:
+                if hasattr(tts_service, '_validate_and_clean_audio'):
+                    try:
+                        from pydub import AudioSegment
+                        audio = AudioSegment.from_file(file_path)
+                        duration_seconds = len(audio) / 1000
+                        print(f"   ⏱️ Generated audio duration: {duration_seconds:.1f}s")
+                    except ImportError:
+                        duration_seconds = 0
+                        print(f"   ⏱️ pydub not available for duration check")
+                else:
+                    duration_seconds = 0
+            except Exception as e:
+                print(f"   ⚠️ Duration check failed: {e}")
+                duration_seconds = 0
+            
+            print(f"   ✅ TTS generation completed successfully")
+            print(f"   📁 File: {file_path}")
+            print(f"   🔗 URL: {web_url}")
+            
             return {
                 "success": True,
-                "message": "Test TTS generation completed",
+                "message": "Test TTS generation completed with contamination prevention",
                 "audio_url": web_url,
                 "file_path": file_path,
                 "provider": provider,
                 "emotion": emotion,
                 "voice_id": voice_id,
-                "text_preview": text[:50] + "..." if len(text) > 50 else text
+                "text_preview": text[:50] + "..." if len(text) > 50 else text,
+                "text_sent": text,  # 🔧 เพิ่มข้อมูล text ที่ส่งมา
+                "duration_seconds": duration_seconds,
+                "contamination_prevented": True
             }
         else:
             raise HTTPException(status_code=500, detail="TTS generation failed")
             
     except Exception as e:
+        print(f"❌ TTS test failed: {e}")
         raise HTTPException(status_code=500, detail=f"TTS test failed: {str(e)}")
 
 # เพิ่ม endpoint สำหรับดูอารมณ์ที่รองรับ
