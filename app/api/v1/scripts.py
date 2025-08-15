@@ -1,281 +1,314 @@
-# app/api/v1/scripts.py
+# app/api/v1/endpoints/scripts.py
 """
-Scripts API endpoints with TTS support
+Fixed Script Management Endpoints - แก้ไข response format
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import List, Optional
-import random
+from sqlalchemy import desc
+from typing import List
+import os
+import traceback
 
-from app.core.database import get_db
-from app.models.product import Product
-from app.models.script import ProductScript
-from app.services.tts_service import tts_service
+from ..dependencies import (
+    get_db, validate_product_exists, validate_script_exists, validate_persona_exists,
+    check_ai_service_availability, ai_script_service,
+    Script, ScriptType, ScriptStatus, ScriptPersona, MP3File,
+    calculate_duration_estimate, safe_file_delete,
+    handle_database_error, handle_service_error
+)
 
-router = APIRouter(prefix="/api/scripts", tags=["scripts"])
+router = APIRouter()
 
-# Request/Response models
-class ScriptCreate(BaseModel):
-    product_id: str
-    title: str
-    content: str
-    script_type: str
-
-class ScriptResponse(BaseModel):
-    id: str
-    product_id: str
-    title: str
-    content: str
-    script_type: str
-    usage_count: int
-    is_active: bool
-    audio_url: Optional[str] = None  # เพิ่ม audio URL
-
-    class Config:
-        from_attributes = True
-
-class GeneratedScript(BaseModel):
-    title: str
-    content: str
-    script_type: str
-
-# Import AI service
-try:
-    from app.services.ai_script_service import AIScriptService
-    ai_script_service = AIScriptService()
-    print("✅ AI Script Service loaded successfully")
-except ImportError as e:
-    print(f"⚠️ AI Script Service import failed: {e}")
-    ai_script_service = None
-    
-async def generate_product_scripts_ai(product: Product) -> List[GeneratedScript]:
-    """Generate 3 different AI-powered scripts for a product"""
-    try:
-        # ใช้ AI สร้างสคริปต์
-        ai_scripts = await ai_script_service.generate_ai_scripts(product)
-        
-        # Convert to GeneratedScript format
-        scripts = []
-        for script_data in ai_scripts:
-            scripts.append(GeneratedScript(
-                title=script_data["title"],
-                content=script_data["content"],
-                script_type=script_data["script_type"]
-            ))
-        
-        return scripts
-        
-    except Exception as e:
-        print(f"❌ AI script generation failed: {e}")
-        # Fallback to template
-        return generate_product_scripts_template(product)
-
-def generate_product_scripts_template(product: Product) -> List[GeneratedScript]:
-    """Generate template scripts (fallback)"""
-    
-    # Format price nicely
-    price_text = f"{product.price:,.0f}"
-    
-    scripts = [
-        GeneratedScript(
-            title="แบบกระตุ้นความต้องการ",
-            content=f"สวัสดีครับทุกคน! วันนี้เรามี {product.name} สุดพิเศษมาแนะนำ! {product.description} ในราคาเพียง {price_text} บาทเท่านั้น! ของดีแบบนี้หาได้ยากมาก รีบสั่งก่อนของหมดนะครับ! 🔥 สต็อกเหลือเพียง {product.stock} ชิ้นเท่านั้น!",
-            script_type="emotional"
-        ),
-        GeneratedScript(
-            title="แบบให้ข้อมูลละเอียด",
-            content=f"ขอแนะนำ {product.name} ครับ ผลิตภัณฑ์คุณภาพเยี่ยมที่ {product.description} สิ่งที่ทำให้สินค้าชิ้นนี้พิเศษคือคุณภาพระดับพรีเมียม ในราคาที่จับต้องได้ เพียง {price_text} บาท หมวดหมู่ {product.category} ที่ได้รับความนิยมสุงสุด สต็อกมีจำนวนจำกัด เหลือเพียง {product.stock} ชิ้นเท่านั้น",
-            script_type="informative"
-        ),
-        GeneratedScript(
-            title="แบบสร้างปฏิสัมพันธ์",
-            content=f"เฮ้ย! คนไหนกำลังหา {product.name} อยู่บ้าง? 🙋‍♀️ วันนี้เราเอาของดีมาให้ทุกคนแล้วนะ! {product.description} ราคาพิเศษสุดๆ {price_text} บาท! พิมพ์ 'สนใจ' ในแชทถ้าอยากได้นะครับ! ใครเป็นคนแรกจะได้ส่วนลดพิเศษ! 💝 มีเพียง {product.stock} ชิ้นเท่านั้น!",
-            script_type="interactive"
-        )
-    ]
-    
-    return scripts
-
-async def generate_audio_for_script(script: ProductScript):
-    """Background task to generate audio for script"""
-    try:
-        await tts_service.generate_script_audio(
-            script_id=script.id,
-            content=script.content,
-            language='th'
-        )
-    except Exception as e:
-        print(f"❌ Failed to generate audio for script {script.id}: {e}")
-
-@router.get("/generate/{product_id}")
-async def generate_scripts(product_id: str, db: Session = Depends(get_db)):
-    """Generate 3 AI-powered scripts for a product"""
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
-    # ใช้ AI สร้างสคริปต์
-    scripts = await generate_product_scripts_ai(product)
-    return {"scripts": scripts}
-
-@router.post("/save-multiple")
-async def save_multiple_scripts(
-    scripts_data: List[ScriptCreate], 
-    background_tasks: BackgroundTasks,
+@router.get("/products/{product_id}/scripts")
+async def get_product_scripts(
+    product_id: int, 
     db: Session = Depends(get_db)
 ):
-    """Save multiple scripts for a product and generate TTS audio"""
-    if not scripts_data:
-        raise HTTPException(status_code=400, detail="No scripts provided")
+    """
+    ดึงสคริปต์ทั้งหมดของสินค้า - Fixed Response Format
     
-    saved_scripts = []
-    product_id = scripts_data[0].product_id
-    
-    # Check if product exists
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
-    # Save all scripts
-    for script_data in scripts_data:
-        # Create script
-        script = ProductScript(
-            product_id=script_data.product_id,
-            title=script_data.title,
-            content=script_data.content,
-            script_type=script_data.script_type,
-            usage_count=0,
-            is_active=True
+    Returns:
+        - scripts: Array of script objects  
+        - total: จำนวนสคริปต์ทั้งหมด
+    """
+    try:
+        print(f"🔍 Loading scripts for product {product_id}")
+        
+        # ตรวจสอบว่า models พร้อม
+        if not Script:
+            print("❌ Script model not available")
+            return {
+                "scripts": [],
+                "total": 0,
+                "error": "Script model not available"
+            }
+        
+        # ตรวจสอบสินค้าก่อน
+        try:
+            await validate_product_exists(product_id, db)
+            print(f"✅ Product {product_id} exists")
+        except HTTPException as e:
+            print(f"❌ Product validation failed: {e.detail}")
+            return {
+                "scripts": [],
+                "total": 0,
+                "error": f"Product not found: {e.detail}"
+            }
+        
+        # ดึงสคริปต์
+        try:
+            scripts = db.query(Script).filter(
+                Script.product_id == product_id
+            ).order_by(desc(Script.created_at)).all()
+            
+            print(f"📊 Found {len(scripts)} scripts for product {product_id}")
+            
+        except Exception as query_error:
+            print(f"❌ Database query error: {query_error}")
+            traceback.print_exc()
+            return {
+                "scripts": [],
+                "total": 0,
+                "error": f"Database query failed: {str(query_error)}"
+            }
+        
+        # แปลงข้อมูลอย่างปลอดภัย
+        script_list = []
+        for i, script in enumerate(scripts):
+            try:
+                # สร้าง script dict แบบ manual เพื่อความปลอดภัย
+                script_dict = {
+                    "id": getattr(script, 'id', None),
+                    "product_id": getattr(script, 'product_id', product_id),
+                    "title": getattr(script, 'title', f"Script {i+1}"),
+                    "content": getattr(script, 'content', ''),
+                    "script_type": getattr(script, 'script_type', 'manual'),
+                    "language": getattr(script, 'language', 'th'),
+                    "target_emotion": getattr(script, 'target_emotion', 'professional'),
+                    "call_to_action": getattr(script, 'call_to_action', ''),
+                    "duration_estimate": getattr(script, 'duration_estimate', 60),
+                    "has_mp3": getattr(script, 'has_mp3', False),
+                    "status": getattr(script, 'status', 'draft'),
+                    "created_at": script.created_at.isoformat() if hasattr(script, 'created_at') and script.created_at else None
+                }
+                
+                # เพิ่มข้อมูล MP3 count ถ้า MP3File model พร้อม
+                if MP3File:
+                    try:
+                        mp3_count = db.query(MP3File).filter(MP3File.script_id == script.id).count()
+                        script_dict['mp3_count'] = mp3_count
+                    except Exception as mp3_error:
+                        print(f"⚠️ Error counting MP3s for script {script.id}: {mp3_error}")
+                        script_dict['mp3_count'] = 0
+                else:
+                    script_dict['mp3_count'] = 0
+                
+                # แปลง enum values เป็น string
+                if hasattr(script_dict['script_type'], 'value'):
+                    script_dict['script_type'] = script_dict['script_type'].value
+                if hasattr(script_dict['status'], 'value'):
+                    script_dict['status'] = script_dict['status'].value
+                
+                script_list.append(script_dict)
+                
+            except Exception as conversion_error:
+                print(f"❌ Error converting script {i}: {conversion_error}")
+                # เพิ่ม fallback script
+                script_list.append({
+                    "id": getattr(script, 'id', i),
+                    "product_id": product_id,
+                    "title": f"Script {i+1} (Error)",
+                    "content": "Error loading script content",
+                    "script_type": "unknown",
+                    "language": "th",
+                    "target_emotion": "professional",
+                    "call_to_action": "",
+                    "duration_estimate": 60,
+                    "has_mp3": False,
+                    "status": "error",
+                    "mp3_count": 0,
+                    "created_at": None,
+                    "error": f"Conversion error: {str(conversion_error)}"
+                })
+                continue
+        
+        # สร้าง response ที่มั่นใจว่าเป็น array
+        response = {
+            "scripts": script_list,  # 🔧 มั่นใจว่าเป็น array เสมอ
+            "total": len(script_list),
+            "product_id": product_id
+        }
+        
+        print(f"✅ Successfully returning {len(script_list)} scripts")
+        print(f"📋 Response type: scripts={type(script_list)}, total={type(len(script_list))}")
+        
+        return response
+        
+    except Exception as e:
+        print(f"❌ Unexpected error in get_product_scripts: {e}")
+        traceback.print_exc()
+        
+        # Return safe fallback response
+        return {
+            "scripts": [],  # 🔧 เสมอเป็น empty array
+            "total": 0,
+            "product_id": product_id,
+            "error": f"Unexpected error: {str(e)}"
+        }
+
+@router.post("/scripts/generate-ai")
+async def generate_ai_scripts(
+    request: dict,  # รับเป็น dict แทน Pydantic model ชั่วคราว
+    db: Session = Depends(get_db)
+):
+    """
+    สร้างสคริปต์ด้วย AI - Fixed Version
+    """
+    try:
+        print(f"🎯 AI Script Generation Request: {request}")
+        
+        # ตรวจสอบข้อมูลพื้นฐาน
+        required_fields = ['product_id', 'persona_id']
+        for field in required_fields:
+            if field not in request:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        product_id = request['product_id']
+        persona_id = request['persona_id']
+        mood = request.get('mood', 'auto')
+        count = request.get('count', 3)
+        custom_instructions = request.get('custom_instructions')
+        
+        # ตรวจสอบ dependencies
+        product = await validate_product_exists(product_id, db)
+        persona = await validate_persona_exists(persona_id, db, "script")
+        ai_service = check_ai_service_availability()
+        
+        print(f"   Product: {product.name} (ID: {product_id})")
+        print(f"   Persona: {persona.name} (ID: {persona_id})")
+        print(f"   Mood: {mood}, Count: {count}")
+
+        # สร้างสคริปต์ด้วย AI service
+        scripts = await ai_service.generate_scripts(
+            db=db,
+            product_id=product_id,
+            persona_id=persona_id,
+            mood=mood,
+            count=count,
+            custom_instructions=custom_instructions
         )
         
-        db.add(script)
-        saved_scripts.append(script)
-    
-    try:
-        db.commit()
+        print(f"📊 Generated {len(scripts)} AI scripts successfully")
         
-        # Refresh all scripts to get IDs
-        for script in saved_scripts:
-            db.refresh(script)
-            # Generate TTS audio in background
-            background_tasks.add_task(generate_audio_for_script, script)
-            
+        # มั่นใจว่า scripts เป็น array
+        if not isinstance(scripts, list):
+            scripts = [scripts] if scripts else []
+        
         return {
-            "success": True,
-            "message": f"บันทึกสคริปต์สำเร็จ {len(saved_scripts)} รายการ (กำลังสร้างไฟล์เสียง...)",
-            "scripts": saved_scripts,
-            "count": len(saved_scripts)
+            "message": f"Generated {len(scripts)} AI scripts successfully",
+            "scripts": scripts,  # 🔧 มั่นใจว่าเป็น array
+            "product_id": product_id,
+            "persona_id": persona_id,
+            "generation_details": {
+                "mood": mood,
+                "count": len(scripts),
+                "persona_name": persona.name,
+                "product_name": product.name,
+                "ai_mode": "openai" if hasattr(ai_service, 'client') and ai_service.client else "simulation",
+                "custom_instructions_used": bool(custom_instructions)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error generating AI scripts: {e}")
+        traceback.print_exc()
+        handle_service_error(e, "AI Script Generation")
+
+@router.get("/scripts/debug/test-response")
+async def test_scripts_response():
+    """
+    ทดสอบ response format สำหรับ debugging
+    """
+    mock_scripts = [
+        {
+            "id": 1,
+            "product_id": 1,
+            "title": "Test Script 1",
+            "content": "This is test script content",
+            "script_type": "manual",
+            "language": "th",
+            "target_emotion": "professional",
+            "call_to_action": "Buy now!",
+            "duration_estimate": 60,
+            "has_mp3": False,
+            "status": "draft",
+            "mp3_count": 0,
+            "created_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 2,
+            "product_id": 1,
+            "title": "Test Script 2",
+            "content": "This is another test script",
+            "script_type": "ai_generated",
+            "language": "th",
+            "target_emotion": "excited",
+            "call_to_action": "Order today!",
+            "duration_estimate": 45,
+            "has_mp3": True,
+            "status": "completed",
+            "mp3_count": 2,
+            "created_at": "2024-01-01T01:00:00Z"
+        }
+    ]
+    
+    return {
+        "scripts": mock_scripts,
+        "total": len(mock_scripts),
+        "product_id": 1,
+        "message": "Test response - scripts is always an array",
+        "debug_info": {
+            "scripts_type": str(type(mock_scripts)),
+            "scripts_length": len(mock_scripts),
+            "is_array": isinstance(mock_scripts, list)
+        }
+    }
+
+@router.get("/scripts/debug/product/{product_id}")
+async def debug_product_scripts(product_id: int, db: Session = Depends(get_db)):
+    """
+    Debug endpoint สำหรับ scripts ของสินค้าเฉพาะ
+    """
+    try:
+        # Raw database query
+        if Script:
+            scripts = db.query(Script).filter(Script.product_id == product_id).all()
+            script_data = []
+            
+            for script in scripts:
+                script_data.append({
+                    "id": script.id,
+                    "title": getattr(script, 'title', 'No title'),
+                    "type": str(type(script)),
+                    "attributes": [attr for attr in dir(script) if not attr.startswith('_')]
+                })
+        else:
+            script_data = []
+        
+        return {
+            "product_id": product_id,
+            "script_model_available": Script is not None,
+            "raw_scripts_count": len(script_data),
+            "scripts_sample": script_data[:3],  # First 3 for debugging
+            "debug_timestamp": "2024-01-01T00:00:00Z"
         }
         
     except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error saving scripts: {str(e)}")
-
-@router.get("/product/{product_id}", response_model=List[ScriptResponse])
-async def get_product_scripts(product_id: str, db: Session = Depends(get_db)):
-    """Get all scripts for a product with audio URLs"""
-    scripts = db.query(ProductScript).filter(
-        ProductScript.product_id == product_id,
-        ProductScript.is_active == True
-    ).order_by(ProductScript.created_at.desc()).all()
-    
-    # Add audio URLs
-    for script in scripts:
-        script.audio_url = tts_service.get_script_audio_url(script.id)
-    
-    return scripts
-
-@router.get("/product/{product_id}/random")
-async def get_random_script(product_id: str, db: Session = Depends(get_db)):
-    """Get a random script for a product (least used first)"""
-    scripts = db.query(ProductScript).filter(
-        ProductScript.product_id == product_id,
-        ProductScript.is_active == True
-    ).all()
-    
-    if not scripts:
-        raise HTTPException(
-            status_code=404, 
-            detail="ยังไม่มีสคริปต์ที่บันทึกไว้ กรุณาสร้างและบันทึกสคริปต์ใหม่ก่อน"
-        )
-    
-    # Find least used scripts
-    min_usage = min(script.usage_count for script in scripts)
-    least_used = [script for script in scripts if script.usage_count == min_usage]
-    
-    # Pick random from least used
-    selected_script = random.choice(least_used)
-    
-    # Update usage count
-    selected_script.usage_count += 1
-    db.commit()
-    db.refresh(selected_script)
-    
-    # Get audio URL
-    audio_url = tts_service.get_script_audio_url(selected_script.id)
-    
-    return {
-        "id": selected_script.id,
-        "title": selected_script.title,
-        "content": selected_script.content,
-        "script_type": selected_script.script_type,
-        "usage_count": selected_script.usage_count,
-        "product_id": selected_script.product_id,
-        "audio_url": audio_url
-    }
-
-@router.post("/generate-audio/{script_id}")
-async def generate_script_audio(
-    script_id: str, 
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
-):
-    """Generate audio for a specific script"""
-    script = db.query(ProductScript).filter(ProductScript.id == script_id).first()
-    if not script:
-        raise HTTPException(status_code=404, detail="Script not found")
-    
-    # Generate audio in background
-    background_tasks.add_task(generate_audio_for_script, script)
-    
-    return {
-        "success": True,
-        "message": "กำลังสร้างไฟล์เสียง...",
-        "script_id": script_id
-    }
-
-@router.get("/audio-stats")
-async def get_audio_stats():
-    """Get TTS audio statistics"""
-    stats = tts_service.get_audio_stats()
-    return {
-        "audio_files": stats["count"],
-        "total_size_mb": stats["total_size_mb"],
-        "storage_path": str(tts_service.audio_dir)
-    }
-
-@router.delete("/product/{product_id}")
-async def delete_all_product_scripts(product_id: str, db: Session = Depends(get_db)):
-    """Delete all scripts for a product and their audio files"""
-    scripts = db.query(ProductScript).filter(
-        ProductScript.product_id == product_id
-    ).all()
-    
-    # Delete audio files
-    for script in scripts:
-        tts_service.delete_script_audio(script.id)
-    
-    # Delete from database
-    deleted_count = db.query(ProductScript).filter(
-        ProductScript.product_id == product_id
-    ).delete()
-    
-    db.commit()
-    
-    return {
-        "success": True,
-        "message": f"ลบสคริปต์และไฟล์เสียงทั้งหมด {deleted_count} รายการ",
-        "deleted_count": deleted_count
-    }
+        return {
+            "product_id": product_id,
+            "error": str(e),
+            "script_model_available": Script is not None
+        }

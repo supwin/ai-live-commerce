@@ -15,7 +15,7 @@ from datetime import datetime
 
 from app.core.config import get_settings
 from app.models.product import Product
-from app.models.script import Script, ScriptPersona, ScriptType, ScriptStatus
+from app.models import Script, ScriptPersona, ScriptType, ScriptStatus
 from app.core.exceptions import AIServiceError, ValidationError
 
 class AIScriptService:

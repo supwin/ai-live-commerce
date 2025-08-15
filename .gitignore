@@ -43,6 +43,7 @@ wheels/
 *.db
 *.sqlite3
 ai_live_commerce.db
+*.bck
 
 # Logs and Uploads
 logs/
@@ -50,6 +51,8 @@ uploads/
 frontend/uploads/
 frontend/static/audio/
 backups/
+Z_bckup_keep/
+tests/
 
 # Secrets (NEVER commit .env files)
 .env

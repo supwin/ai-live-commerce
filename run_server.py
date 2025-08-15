@@ -38,6 +38,18 @@ except ImportError as e:
     print(f"⚠️ Could not import AI Script Service: {e}")
     ai_script_service = None
 
+try:
+    from app.services.tts import enhanced_tts_service
+    print("✅ Enhanced TTS Service imported successfully")
+except ImportError as e:
+    print(f"⚠️ Could not import Enhanced TTS Service: {e}")
+    enhanced_tts_service = None    
+
+if enhanced_tts_service:
+    tts_status = enhanced_tts_service.get_provider_status()
+    print(f"   Available providers: {[p for p, s in tts_status.items() if s['available']]}")
+    print(f"   Recommended provider: {enhanced_tts_service.get_recommended_provider()}")
+    
 # Global variables for monitoring
 start_time = datetime.utcnow()
 request_count = 0
@@ -97,6 +109,19 @@ async def lifespan(app: FastAPI):
             print(f"   ⚠️ OpenAI test failed: {e}")
     else:
         print("   ⚠️ AI Script Service not available")
+
+    print("\n🎤 Testing Thai TTS capabilities...")
+    if enhanced_tts_service:
+        try:
+            providers = enhanced_tts_service.get_available_providers()
+            available_count = sum(1 for p in providers.values() if p['available'])
+            print(f"   ✅ TTS Providers available: {available_count}")
+            for name, config in providers.items():
+                if config['available']:
+                    voices = len(config['voices'])
+                    print(f"   ✅ {name.capitalize()}: {voices} voices, {config['quality']} quality")
+        except Exception as e:
+            print(f"   ⚠️ TTS test failed: {e}")    
     
     # Calculate startup time and memory usage
     startup_duration = (datetime.utcnow() - start_time).total_seconds()
@@ -167,6 +192,8 @@ app.mount("/uploads", StaticFiles(directory="frontend/uploads"), name="uploads")
 
 # Include API routers
 app.include_router(dashboard_router, prefix="/api/v1", tags=["Dashboard"])
+from app.api.v1.tts import router as tts_router
+app.include_router(tts_router, prefix="/api/v1", tags=["Thai TTS"])
 
 # Root endpoint - Dashboard
 @app.get("/", response_class=HTMLResponse)
@@ -238,6 +265,14 @@ async def dashboard():
                 <p>📚 Check the <a href="/docs">API Documentation</a></p>
                 <p>🧪 Run the <a href="/api/v1/dashboard/test/ai-generation">AI Test</a></p>
                 <p>📊 Monitor <a href="/api/system/info">System Health</a></p>
+            </div>
+
+            <div class="card">
+                <h3>🎤 Thai TTS System</h3>
+                <p><a href="/api/v1/tts/test" class="btn">🧪 Test TTS</a></p>
+                <p><a href="/api/v1/tts/voices" class="btn">🗣️ Available Voices</a></p>
+                <p><a href="/api/v1/tts/status" class="btn">📊 TTS Status</a></p>
+                <p><a href="/docs#/Thai%20TTS" class="btn">📚 TTS API Docs</a></p>
             </div>
         </div>
     </div>
