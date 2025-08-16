@@ -78,7 +78,7 @@ async def connect_facebook():
             }
             
     except Exception as e:
-        logger.error(f"Facebook connect error: {str(e)}")
+        print("ERROR: "f"Facebook connect error: {str(e)}")
         return {
             "success": False,
             "message": f"Connection failed: {str(e)}",
@@ -96,7 +96,7 @@ async def facebook_oauth_callback(
     try:
         # Check for OAuth errors
         if error:
-            logger.error(f"Facebook OAuth error: {error} - {error_description}")
+            print("ERROR: "f"Facebook OAuth error: {error} - {error_description}")
             
             # Redirect to dashboard with error
             error_message = error_description or error
@@ -107,25 +107,25 @@ async def facebook_oauth_callback(
         
         # Check for required parameters
         if not code:
-            logger.error("No authorization code received from Facebook")
+            print("ERROR: ""No authorization code received from Facebook")
             return RedirectResponse(
                 url="/?facebook_error=No authorization code received",
                 status_code=302
             )
         
         if not facebook_service:
-            logger.error("Facebook service not available")
+            print("ERROR: ""Facebook service not available")
             return RedirectResponse(
                 url="/?facebook_error=Facebook service not available",
                 status_code=302
             )
         
         # Process the OAuth callback
-        logger.info(f"Processing Facebook OAuth callback")
+        print("INFO: "f"Processing Facebook OAuth callback")
         result = await facebook_service.handle_oauth_callback(code, state)
         
         if result.get("success"):
-            logger.info("Facebook OAuth successful, redirecting to dashboard")
+            print("INFO: ""Facebook OAuth successful, redirecting to dashboard")
             
             # Redirect to dashboard with success status
             return RedirectResponse(
@@ -134,7 +134,7 @@ async def facebook_oauth_callback(
             )
         else:
             error_msg = result.get("error", "Unknown error during OAuth")
-            logger.error(f"Facebook OAuth failed: {error_msg}")
+            print("ERROR: "f"Facebook OAuth failed: {error_msg}")
             
             return RedirectResponse(
                 url=f"/?facebook_error={error_msg}",
@@ -142,7 +142,7 @@ async def facebook_oauth_callback(
             )
             
     except Exception as e:
-        logger.error(f"OAuth callback exception: {str(e)}")
+        print("ERROR: "f"OAuth callback exception: {str(e)}")
         return RedirectResponse(
             url=f"/?facebook_error=OAuth callback failed: {str(e)}",
             status_code=302
@@ -171,7 +171,7 @@ async def get_auth_status():
                 "error": "Facebook service not available"
             }
     except Exception as e:
-        logger.error(f"Auth status check error: {str(e)}")
+        print("ERROR: "f"Auth status check error: {str(e)}")
         return {
             "success": False,
             "connected": False,
@@ -194,7 +194,7 @@ async def get_facebook_status():
                 "live_video_active": False
             }
     except Exception as e:
-        logger.error(f"Status check error: {str(e)}")
+        print("ERROR: "f"Status check error: {str(e)}")
         return {
             "connected": False,
             "error": str(e)
@@ -222,7 +222,7 @@ async def get_facebook_pages():
                 ]
             }
     except Exception as e:
-        logger.error(f"Get pages error: {str(e)}")
+        print("ERROR: "f"Get pages error: {str(e)}")
         return {
             "success": False,
             "error": str(e),
@@ -251,7 +251,7 @@ async def select_facebook_page(page_data: FacebookPageSelect):
                 "message": "Page selected successfully (Fallback Mode)"
             }
     except Exception as e:
-        logger.error(f"Select page error: {str(e)}")
+        print("ERROR: "f"Select page error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -291,7 +291,7 @@ async def create_live_video(live_data: LiveVideoCreate):
             }
             
     except Exception as e:
-        logger.error(f"Create live video error: {str(e)}")
+        print("ERROR: "f"Create live video error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -310,7 +310,7 @@ async def end_live_video():
                 "message": "Live video ended successfully (Fallback Mode)"
             }
     except Exception as e:
-        logger.error(f"End live video error: {str(e)}")
+        print("ERROR: "f"End live video error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -346,7 +346,7 @@ async def get_live_comments():
             return {"success": True, "comments": []}
             
     except Exception as e:
-        logger.error(f"Get comments error: {str(e)}")
+        print("ERROR: "f"Get comments error: {str(e)}")
         return {"success": True, "comments": []}
 
 @router.post("/live/comment")
@@ -364,7 +364,7 @@ async def post_live_comment(comment_data: FacebookComment):
                 "message": "Comment posted successfully (Fallback Mode)"
             }
     except Exception as e:
-        logger.error(f"Post comment error: {str(e)}")
+        print("ERROR: "f"Post comment error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -386,7 +386,7 @@ async def get_live_info():
                 "error": "No active live video"
             }
     except Exception as e:
-        logger.error(f"Get live info error: {str(e)}")
+        print("ERROR: "f"Get live info error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
@@ -406,7 +406,7 @@ async def facebook_health():
                 "facebook_app_configured": False
             }
     except Exception as e:
-        logger.error(f"Health check error: {str(e)}")
+        print("ERROR: "f"Health check error: {str(e)}")
         return {
             "status": "error",
             "error": str(e)

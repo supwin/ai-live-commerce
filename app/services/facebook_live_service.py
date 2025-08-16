@@ -27,9 +27,9 @@ class FacebookLiveService:
         # If no credentials, force mock mode
         if not self.app_id or not self.app_secret:
             self.mock_mode = True
-            logger.warning("Facebook credentials not found - using mock mode")
+            print("WARNING: ""Facebook credentials not found - using mock mode")
         else:
-            logger.info(f"Facebook credentials found - mock mode: {self.mock_mode}")
+            print("INFO: "f"Facebook credentials found - mock mode: {self.mock_mode}")
         
         # State management
         self.access_token = None
@@ -43,7 +43,7 @@ class FacebookLiveService:
         # Mock data for testing
         self._init_mock_data()
         
-        logger.info(f"Facebook Service initialized - Mock Mode: {self.mock_mode}")
+        print("INFO: "f"Facebook Service initialized - Mock Mode: {self.mock_mode}")
     
     def _init_mock_data(self):
         """Initialize mock data for testing"""
@@ -78,11 +78,11 @@ class FacebookLiveService:
         """Connect to Facebook - Real or Mock Mode"""
         try:
             if self.mock_mode:
-                logger.info("Using Facebook Mock Mode")
+                print("INFO: ""Using Facebook Mock Mode")
                 return await self._mock_connect()
             
             # Real Facebook connection
-            logger.info("Initiating Real Facebook Connection")
+            print("INFO: ""Initiating Real Facebook Connection")
             state = secrets.token_urlsafe(32)
             
             # Facebook OAuth URL with proper scopes
@@ -111,9 +111,9 @@ class FacebookLiveService:
             }
             
         except Exception as e:
-            logger.error(f"Facebook connect error: {str(e)}")
+            print("ERROR: "f"Facebook connect error: {str(e)}")
             # Fallback to mock mode on error
-            logger.warning("Falling back to mock mode due to error")
+            print("WARNING: ""Falling back to mock mode due to error")
             self.mock_mode = True
             return await self._mock_connect()
     
@@ -123,7 +123,7 @@ class FacebookLiveService:
             if self.mock_mode:
                 return await self._mock_connect()
             
-            logger.info(f"Processing Facebook OAuth callback with code: {code[:10]}...")
+            print("INFO: "f"Processing Facebook OAuth callback with code: {code[:10]}...")
             
             # Exchange authorization code for access token
             token_url = f"https://graph.facebook.com/{self.api_version}/oauth/access_token"
@@ -143,7 +143,7 @@ class FacebookLiveService:
             if not self.access_token:
                 raise Exception("Failed to obtain access token from Facebook")
             
-            logger.info("Successfully obtained Facebook access token")
+            print("INFO: ""Successfully obtained Facebook access token")
             
             # Get user information
             user_response = requests.get(
@@ -157,7 +157,7 @@ class FacebookLiveService:
             user_response.raise_for_status()
             self.user_info = user_response.json()
             
-            logger.info(f"Retrieved user info: {self.user_info.get('name')}")
+            print("INFO: "f"Retrieved user info: {self.user_info.get('name')}")
             
             # Mark as connected
             self.is_connected = True
@@ -175,14 +175,14 @@ class FacebookLiveService:
             }
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Facebook API request error: {str(e)}")
+            print("ERROR: "f"Facebook API request error: {str(e)}")
             return {
                 "success": False,
                 "error": f"Facebook API error: {str(e)}",
                 "fallback_to_mock": True
             }
         except Exception as e:
-            logger.error(f"OAuth callback error: {str(e)}")
+            print("ERROR: "f"OAuth callback error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e),
@@ -200,7 +200,7 @@ class FacebookLiveService:
             self.user_info = self.mock_user.copy()
             self.pages = self.mock_pages.copy()
             
-            logger.info(f"Mock Facebook connection successful: {self.user_info['name']}")
+            print("INFO: "f"Mock Facebook connection successful: {self.user_info['name']}")
             
             return {
                 "success": True,
@@ -212,7 +212,7 @@ class FacebookLiveService:
             }
             
         except Exception as e:
-            logger.error(f"Mock connection error: {str(e)}")
+            print("ERROR: "f"Mock connection error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e),
@@ -253,7 +253,7 @@ class FacebookLiveService:
             if not self.access_token:
                 raise Exception("No access token available")
             
-            logger.info("Fetching user pages from Facebook API")
+            print("INFO: ""Fetching user pages from Facebook API")
             
             response = requests.get(
                 f"https://graph.facebook.com/{self.api_version}/me/accounts",
@@ -274,7 +274,7 @@ class FacebookLiveService:
                 if "MANAGE" in page.get("tasks", []) and "CREATE_CONTENT" in page.get("tasks", [])
             ]
             
-            logger.info(f"Retrieved {len(self.pages)} manageable pages out of {len(all_pages)} total")
+            print("INFO: "f"Retrieved {len(self.pages)} manageable pages out of {len(all_pages)} total")
             
             return {
                 "success": True,
@@ -284,14 +284,14 @@ class FacebookLiveService:
             }
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Facebook API error getting pages: {str(e)}")
+            print("ERROR: "f"Facebook API error getting pages: {str(e)}")
             return {
                 "success": False,
                 "error": f"Facebook API error: {str(e)}",
                 "pages": []
             }
         except Exception as e:
-            logger.error(f"Get pages error: {str(e)}")
+            print("ERROR: "f"Get pages error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e),
@@ -312,7 +312,7 @@ class FacebookLiveService:
                 raise Exception(f"Page {page_id} not found in available pages")
             
             self.selected_page = selected_page
-            logger.info(f"Selected page: {selected_page['name']} ({'Mock' if self.mock_mode else 'Real'})")
+            print("INFO: "f"Selected page: {selected_page['name']} ({'Mock' if self.mock_mode else 'Real'})")
             
             return {
                 "success": True,
@@ -322,7 +322,7 @@ class FacebookLiveService:
             }
             
         except Exception as e:
-            logger.error(f"Select page error: {str(e)}")
+            print("ERROR: "f"Select page error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -341,7 +341,7 @@ class FacebookLiveService:
             page_access_token = self.selected_page["access_token"]
             page_id = self.selected_page["id"]
             
-            logger.info(f"Creating live video on page {self.selected_page['name']}")
+            print("INFO: "f"Creating live video on page {self.selected_page['name']}")
             
             # Create live video
             response = requests.post(
@@ -360,7 +360,7 @@ class FacebookLiveService:
             self.live_video_id = live_video_data["id"]
             self.current_live_video = live_video_data
             
-            logger.info(f"Successfully created Facebook Live Video: {live_video_data['id']}")
+            print("INFO: "f"Successfully created Facebook Live Video: {live_video_data['id']}")
             
             return {
                 "success": True,
@@ -370,13 +370,13 @@ class FacebookLiveService:
             }
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Facebook API error creating live video: {str(e)}")
+            print("ERROR: "f"Facebook API error creating live video: {str(e)}")
             return {
                 "success": False,
                 "error": f"Facebook API error: {str(e)}"
             }
         except Exception as e:
-            logger.error(f"Create live video error: {str(e)}")
+            print("ERROR: "f"Create live video error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -405,7 +405,7 @@ class FacebookLiveService:
             self.live_video_id = live_video_data["id"]
             self.current_live_video = live_video_data
             
-            logger.info(f"Mock live video created: {live_id}")
+            print("INFO: "f"Mock live video created: {live_id}")
             
             return {
                 "success": True,
@@ -415,7 +415,7 @@ class FacebookLiveService:
             }
             
         except Exception as e:
-            logger.error(f"Mock create live video error: {str(e)}")
+            print("ERROR: "f"Mock create live video error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -433,7 +433,7 @@ class FacebookLiveService:
             # Real Facebook API call
             page_access_token = self.selected_page["access_token"]
             
-            logger.info(f"Ending live video: {self.live_video_id}")
+            print("INFO: "f"Ending live video: {self.live_video_id}")
             
             response = requests.post(
                 f"https://graph.facebook.com/{self.api_version}/{self.live_video_id}",
@@ -448,7 +448,7 @@ class FacebookLiveService:
             self.live_video_id = None
             self.current_live_video = None
             
-            logger.info("Live video ended successfully")
+            print("INFO: ""Live video ended successfully")
             
             return {
                 "success": True,
@@ -457,13 +457,13 @@ class FacebookLiveService:
             }
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Facebook API error ending live video: {str(e)}")
+            print("ERROR: "f"Facebook API error ending live video: {str(e)}")
             return {
                 "success": False,
                 "error": f"Facebook API error: {str(e)}"
             }
         except Exception as e:
-            logger.error(f"End live video error: {str(e)}")
+            print("ERROR: "f"End live video error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -517,10 +517,10 @@ class FacebookLiveService:
             }
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Facebook API error getting comments: {str(e)}")
+            print("ERROR: "f"Facebook API error getting comments: {str(e)}")
             return {"success": True, "comments": [], "error": str(e)}
         except Exception as e:
-            logger.error(f"Get comments error: {str(e)}")
+            print("ERROR: "f"Get comments error: {str(e)}")
             return {"success": True, "comments": [], "error": str(e)}
     
     async def _mock_get_comments(self) -> Dict[str, Any]:
@@ -597,7 +597,7 @@ class FacebookLiveService:
             
             result = response.json()
             
-            logger.info(f"Posted comment to live video: {message[:50]}...")
+            print("INFO: "f"Posted comment to live video: {message[:50]}...")
             
             return {
                 "success": True,
@@ -607,13 +607,13 @@ class FacebookLiveService:
             }
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Facebook API error posting comment: {str(e)}")
+            print("ERROR: "f"Facebook API error posting comment: {str(e)}")
             return {
                 "success": False,
                 "error": f"Facebook API error: {str(e)}"
             }
         except Exception as e:
-            logger.error(f"Post comment error: {str(e)}")
+            print("ERROR: "f"Post comment error: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)

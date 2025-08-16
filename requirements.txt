@@ -153,3 +153,6 @@ librosa==0.10.1             # Audio analysis
 soundfile==0.12.1           # Audio file handling
 numpy==1.24.3               # Numerical computing
 
+# Android Device Control
+scrcpy
+adb-shell>=0.4.0

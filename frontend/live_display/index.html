@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Live Commerce - Content Display</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        .display-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        
+        .content-frame {
+            width: 60vh;  /* 9:16 aspect ratio */
+            height: 100vh;
+            background: #000;
+            border: 3px solid #fff;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 0 30px rgba(255,255,255,0.3);
+        }
+        
+        .video-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .content-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+            padding: 30px 20px 20px;
+            color: white;
+        }
+        
+        .product-name {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        .product-price {
+            font-size: 32px;
+            color: #ff6b6b;
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        .product-description {
+            font-size: 16px;
+            opacity: 0.9;
+            line-height: 1.4;
+        }
+        
+        .live-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: #ff0000;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 200px;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        
+        .placeholder-content {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .placeholder-title {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        .placeholder-subtitle {
+            font-size: 24px;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+        
+        .placeholder-instructions {
+            font-size: 18px;
+            opacity: 0.7;
+            line-height: 1.6;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="display-container">
+        <div class="content-frame">
+            <div class="live-indicator">🔴 LIVE</div>
+            
+            <div class="video-container" id="videoContainer">
+                <!-- Video content will be loaded here -->
+                <div class="placeholder-content fade-in">
+                    <div class="placeholder-title">🤖 AI Live Commerce</div>
+                    <div class="placeholder-subtitle">Content Display Ready</div>
+                    <div class="placeholder-instructions">
+                        Content will appear here automatically<br>
+                        Point your mobile camera at this area<br>
+                        Perfect for TikTok Live streaming
+                    </div>
+                </div>
+            </div>
+            
+            <div class="content-overlay" id="contentOverlay" style="display: none;">
+                <div class="product-name" id="productName">Product Name</div>
+                <div class="product-price" id="productPrice">฿0</div>
+                <div class="product-description" id="productDescription">Product description</div>
+            </div>
+        </div>
+        
+        <div class="status-panel">
+            <div class="status-item">
+                <span>🔗 WebSocket:</span>
+                <span id="websocketStatus">Connecting...</span>
+            </div>
+            <div class="status-item">
+                <span>📱 Format:</span>
+                <span>9:16 (TikTok)</span>
+            </div>
+            <div class="status-item">
+                <span>🔄 Updates:</span>
+                <span id="updateCount">0</span>
+            </div>
+            <div class="status-item">
+                <span>⏰ Last Update:</span>
+                <span id="lastUpdate">Never</span>
+            </div>
+        </div>
+        
+        <div class="controls-hint">
+            Press F11 for fullscreen • /mobile for mobile view
+        </div>
+    </div>
+    
+    <script>
+        let ws = null;
+        let updateCount = 0;
+        let currentContent = null;
+        
+        // WebSocket connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                document.getElementById('websocketStatus').textContent = 'Connected';
+                document.getElementById('websocketStatus').style.color = '#4ade80';
+                console.log('WebSocket connected');
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleContentUpdate(data);
+                } catch (error) {
+                    console.error('WebSocket message error:', error);
+                }
+            };
+            
+            ws.onclose = function() {
+                document.getElementById('websocketStatus').textContent = 'Disconnected';
+                document.getElementById('websocketStatus').style.color = '#ef4444';
+                console.log('WebSocket disconnected');
+                
+                // Reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        // Handle content updates
+        function handleContentUpdate(data) {
+            console.log('Content update received:', data);
+            
+            updateCount++;
+            document.getElementById('updateCount').textContent = updateCount;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+            
+            if (data.type === 'content_update') {
+                updateDisplayContent(data.content);
+            }
+        }
+        
+        // Update display content
+        function updateDisplayContent(content) {
+            const videoContainer = document.getElementById('videoContainer');
+            const contentOverlay = document.getElementById('contentOverlay');
+            
+            if (content.video_path) {
+                // Show video content
+                videoContainer.innerHTML = `
+                    <video class="video-player fade-in" autoplay loop muted>
+                        <source src="${content.video_path}" type="video/mp4">
+                        Your browser does not support video playback.
+                    </video>
+                `;
+            } else {
+                // Show placeholder or text content
+                videoContainer.innerHTML = `
+                    <div class="placeholder-content fade-in">
+                        <div class="placeholder-title">🎬 Content Ready</div>
+                        <div class="placeholder-subtitle">${content.product_info?.name || 'AI Generated Content'}</div>
+                        <div class="placeholder-instructions">
+                            ${content.product_info?.description || 'Live streaming content'}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Update overlay information
+            if (content.product_info) {
+                document.getElementById('productName').textContent = content.product_info.name || 'Product';
+                document.getElementById('productPrice').textContent = content.product_info.price || '฿0';
+                document.getElementById('productDescription').textContent = content.product_info.description || '';
+                contentOverlay.style.display = 'block';
+            } else {
+                contentOverlay.style.display = 'none';
+            }
+            
+            currentContent = content;
+        }
+        
+        // Fetch current content
+        async function fetchCurrentContent() {
+            try {
+                const response = await fetch('/api/current-content');
+                const data = await response.json();
+                
+                if (data.success && data.content) {
+                    updateDisplayContent(data.content);
+                }
+            } catch (error) {
+                console.error('Failed to fetch current content:', error);
+            }
+        }
+        
+        // Auto-refresh content every 5 seconds (fallback)
+        setInterval(fetchCurrentContent, 5000);
+        
+        // Initialize
+        connectWebSocket();
+        fetchCurrentContent();
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'F11') {
+                event.preventDefault();
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    document.documentElement.requestFullscreen();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

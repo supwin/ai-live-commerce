@@ -50,6 +50,7 @@ if enhanced_tts_service:
     print(f"   Available providers: {[p for p, s in tts_status.items() if s['available']]}")
     print(f"   Recommended provider: {enhanced_tts_service.get_recommended_provider()}")
     
+    
 # Global variables for monitoring
 start_time = datetime.utcnow()
 request_count = 0
@@ -194,6 +195,23 @@ app.mount("/uploads", StaticFiles(directory="frontend/uploads"), name="uploads")
 app.include_router(dashboard_router, prefix="/api/v1", tags=["Dashboard"])
 from app.api.v1.tts import router as tts_router
 app.include_router(tts_router, prefix="/api/v1", tags=["Thai TTS"])
+
+from app.api.v1.mobile_live import router as mobile_live_router
+app.include_router(mobile_live_router, prefix="/api/v1", tags=["Mobile Live"])
+
+try:
+    from app.api.v1.video_generation import router as video_generation_router
+    app.include_router(video_generation_router, prefix="/api/v1", tags=["Video Generation"])
+    print("✅ Video Generation API loaded")
+except ImportError as e:
+    print(f"⚠️ Video Generation API not loaded: {e}")
+
+try:
+    from app.api.v1.content_display import router as content_display_router
+    app.include_router(content_display_router, prefix="/api/v1", tags=["Content Display"])
+    print("✅ Content Display API loaded")
+except ImportError as e:
+    print(f"⚠️ Content Display API not loaded: {e}")
 
 # Root endpoint - Dashboard
 @app.get("/", response_class=HTMLResponse)

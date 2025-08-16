@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Live Commerce - Mobile Display</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Arial Black', sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        .mobile-container {
+            width: 60vh;  /* 9:16 aspect ratio */
+            height: 100vh;
+            position: relative;
+            background: linear-gradient(45deg, #000 0%, #1a1a1a 100%);
+        }
+        
+        .content-area {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        
+        .video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .product-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, #000);
+            padding: 60px 40px 40px;
+            text-align: center;
+        }
+        
+        .product-name {
+            font-size: 48px;
+            font-weight: 900;
+            margin-bottom: 20px;
+            text-shadow: 4px 4px 8px rgba(0,0,0,0.9);
+            line-height: 1.2;
+            color: #fff;
+        }
+        
+        .product-price {
+            font-size: 64px;
+            color: #00ff00;
+            font-weight: 900;
+            margin-bottom: 20px;
+            text-shadow: 4px 4px 8px rgba(0,0,0,0.9);
+            animation: priceGlow 2s infinite alternate;
+        }
+        
+        @keyframes priceGlow {
+            from { text-shadow: 4px 4px 8px rgba(0,0,0,0.9), 0 0 10px #00ff00; }
+            to { text-shadow: 4px 4px 8px rgba(0,0,0,0.9), 0 0 20px #00ff00, 0 0 30px #00ff00; }
+        }
+        
+        .product-description {
+            font-size: 28px;
+            opacity: 0.9;
+            line-height: 1.4;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.9);
+            max-width: 80%;
+        }
+        
+        .live-badge {
+            position: absolute;
+            top: 40px;
+            left: 40px;
+            background: #ff0000;
+            color: white;
+            padding: 16px 32px;
+            border-radius: 30px;
+            font-weight: 900;
+            font-size: 24px;
+            animation: livePulse 1.5s infinite;
+            box-shadow: 0 0 20px rgba(255,0,0,0.5);
+        }
+        
+        @keyframes livePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .qr-corner {
+            position: absolute;
+            top: 40px;
+            right: 40px;
+            width: 120px;
+            height: 120px;
+            background: #fff;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #000;
+            font-weight: bold;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+        
+        .placeholder-mobile {
+            text-align: center;
+            padding: 80px 40px;
+        }
+        
+        .placeholder-title {
+            font-size: 72px;
+            margin-bottom: 40px;
+            text-shadow: 4px 4px 8px rgba(0,0,0,0.9);
+            font-weight: 900;
+        }
+        
+        .placeholder-subtitle {
+            font-size: 42px;
+            opacity: 0.8;
+            margin-bottom: 40px;
+            font-weight: bold;
+        }
+        
+        .placeholder-ready {
+            font-size: 32px;
+            color: #00ff00;
+            font-weight: bold;
+            animation: readyBlink 2s infinite;
+        }
+        
+        @keyframes readyBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.5; }
+        }
+        
+        .cta-banner {
+            position: absolute;
+            bottom: 200px;
+            left: 0;
+            right: 0;
+            background: rgba(255,107,107,0.9);
+            padding: 20px;
+            text-align: center;
+            animation: ctaSlide 3s infinite;
+        }
+        
+        @keyframes ctaSlide {
+            0%, 80% { transform: translateY(0); }
+            90% { transform: translateY(-10px); }
+            100% { transform: translateY(0); }
+        }
+        
+        .cta-text {
+            font-size: 36px;
+            font-weight: 900;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+    <div class="mobile-container">
+        <div class="content-area">
+            <div class="live-badge">🔴 LIVE</div>
+            <div class="qr-corner">QR<br>CODE</div>
+            
+            <div id="videoContainer">
+                <div class="placeholder-mobile">
+                    <div class="placeholder-title">🤖 AI LIVE</div>
+                    <div class="placeholder-subtitle">COMMERCE</div>
+                    <div class="placeholder-ready">📱 READY FOR CAPTURE</div>
+                </div>
+            </div>
+            
+            <div class="product-overlay" id="productOverlay" style="display: none;">
+                <div class="product-name" id="productName">PRODUCT NAME</div>
+                <div class="product-price" id="productPrice">฿0</div>
+                <div class="product-description" id="productDescription">Product description</div>
+            </div>
+            
+            <div class="cta-banner" id="ctaBanner" style="display: none;">
+                <div class="cta-text" id="ctaText">สั่งซื้อได้เลย!</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let ws = null;
+        let contentRotationInterval = null;
+        
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('Mobile display WebSocket connected');
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'content_update') {
+                        updateMobileContent(data.content);
+                    }
+                } catch (error) {
+                    console.error('WebSocket message error:', error);
+                }
+            };
+            
+            ws.onclose = function() {
+                console.log('Mobile display WebSocket disconnected');
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+        
+        function updateMobileContent(content) {
+            const videoContainer = document.getElementById('videoContainer');
+            const productOverlay = document.getElementById('productOverlay');
+            const ctaBanner = document.getElementById('ctaBanner');
+            
+            if (content.video_path) {
+                videoContainer.innerHTML = `
+                    <video class="video-player" autoplay loop muted playsinline>
+                        <source src="${content.video_path}" type="video/mp4">
+                    </video>
+                `;
+            } else {
+                videoContainer.innerHTML = `
+                    <div class="placeholder-mobile">
+                        <div class="placeholder-title">🎬 CONTENT</div>
+                        <div class="placeholder-subtitle">${(content.product_info?.name || 'AI LIVE').toUpperCase()}</div>
+                        <div class="placeholder-ready">📱 STREAMING NOW</div>
+                    </div>
+                `;
+            }
+            
+            if (content.product_info) {
+                document.getElementById('productName').textContent = (content.product_info.name || '').toUpperCase();
+                document.getElementById('productPrice').textContent = content.product_info.price || '฿0';
+                document.getElementById('productDescription').textContent = content.product_info.description || '';
+                productOverlay.style.display = 'block';
+                
+                // Show CTA banner if available
+                if (content.script_info?.call_to_action) {
+                    document.getElementById('ctaText').textContent = content.script_info.call_to_action.toUpperCase();
+                    ctaBanner.style.display = 'block';
+                }
+            } else {
+                productOverlay.style.display = 'none';
+                ctaBanner.style.display = 'none';
+            }
+        }
+        
+        async function fetchCurrentContent() {
+            try {
+                const response = await fetch('/api/current-content');
+                const data = await response.json();
+                if (data.success && data.content) {
+                    updateMobileContent(data.content);
+                }
+            } catch (error) {
+                console.error('Failed to fetch current content:', error);
+            }
+        }
+        
+        // Prevent mobile browser zoom/scroll
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        
+        document.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+        
+        // Initialize
+        connectWebSocket();
+        fetchCurrentContent();
+        setInterval(fetchCurrentContent, 3000); // Faster refresh for mobile
+        
+        // Keep screen awake
+        if ('wakeLock' in navigator) {
+            navigator.wakeLock.request('screen').catch(err => {
+                console.log('Wake lock failed:', err);
+            });
+        }
+    </script>
+</body>
+</html>

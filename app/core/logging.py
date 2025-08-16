@@ -117,7 +117,7 @@ class LoggerManager:
             'user_id': user_id
         }
         
-        logger.info(
+        print("INFO: "
             f"API Request: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
             extra={'extra_data': extra_data}
         )
@@ -135,7 +135,7 @@ class LoggerManager:
             'processing_time_ms': processing_time_ms
         }
         
-        logger.info(
+        print("INFO: "
             f"AI Chat: {platform}/{username} - {processing_time_ms:.2f}ms",
             extra={'extra_data': extra_data}
         )
@@ -150,7 +150,7 @@ class LoggerManager:
             'data': data
         }
         
-        logger.info(
+        print("INFO: "
             f"Platform Event: {platform} - {event_type}",
             extra={'extra_data': extra_data}
         )
@@ -165,7 +165,7 @@ class LoggerManager:
             'context': context
         }
         
-        logger.error(
+        print("ERROR: "
             f"Error: {type(error).__name__} - {str(error)}",
             exc_info=True,
             extra={'extra_data': extra_data}
