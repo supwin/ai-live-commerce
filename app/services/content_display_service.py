@@ -287,6 +287,17 @@ class ContentDisplayService:
             height: 100%;
             object-fit: cover;
         }}
+
+        .video-container.has-video {{
+            background: #000;
+        }}
+
+        .video-player {{
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+        }}
         
         .content-overlay {{
             position: absolute;
@@ -516,7 +527,9 @@ class ContentDisplayService:
                         Your browser does not support video playback.
                     </video>
                 `;
+                videoContainer.classList.add('has-video');
             }} else {{
+                videoContainer.classList.remove('has-video');
                 // Show placeholder or text content
                 videoContainer.innerHTML = `
                     <div class="placeholder-content fade-in">
@@ -1225,29 +1238,37 @@ class ContentDisplayService:
         """หยุด display server"""
         
         try:
+            print("🛑 Stopping display server...")
+            
+            # Close all WebSocket connections first
+            for connection in self.active_connections.copy():
+                try:
+                    await connection.close(code=1001, reason="Server shutting down")
+                    print(f"   ✅ Closed WebSocket connection")
+                except Exception as e:
+                    print(f"   ⚠️ Error closing WebSocket: {e}")
+            
+            self.active_connections.clear()
+            
+            # Stop server
             if self.server_process:
-                self.server_process.should_exit = True
-                self.is_running = False
+                try:
+                    self.server_process.should_exit = True
+                    # Force stop after 2 seconds
+                    await asyncio.sleep(0.5)
+                    print("   ✅ Display server process stopped")
+                except Exception as e:
+                    print(f"   ⚠️ Error stopping server process: {e}")
                 
-                # Close all WebSocket connections
-                for connection in self.active_connections:
-                    try:
-                        await connection.close()
-                    except:
-                        pass
-                
-                self.active_connections.clear()
-                
-                return {
-                    "success": True,
-                    "message": "Display server stopped successfully"
-                }
-            else:
-                return {
-                    "success": True,
-                    "message": "Display server was not running"
-                }
-                
+                self.server_process = None
+            
+            self.is_running = False
+            
+            return {
+                "success": True,
+                "message": "Display server stopped successfully"
+            }
+            
         except Exception as e:
             print(f"❌ Failed to stop display server: {str(e)}")
             return {

@@ -50,6 +50,17 @@
             height: 100%;
             object-fit: cover;
         }
+
+        .video-container.has-video {
+            background: #000;
+        }
+
+        .video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+        }
         
         .content-overlay {
             position: absolute;
@@ -279,7 +290,9 @@
                         Your browser does not support video playback.
                     </video>
                 `;
+                videoContainer.classList.add('has-video');
             } else {
+                videoContainer.classList.remove('has-video');
                 // Show placeholder or text content
                 videoContainer.innerHTML = `
                     <div class="placeholder-content fade-in">

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.services.content_display_service import content_display_service
 
-router = APIRouter(prefix="/content-display", tags=["Content Display"])
+router = APIRouter(tags=["Content Display"])
 
 # Request Models
 class ContentUpdateRequest(BaseModel):

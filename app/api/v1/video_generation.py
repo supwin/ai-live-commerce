@@ -5,6 +5,8 @@ Video Generation API Endpoints
 """
 
 import asyncio
+import os
+from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -413,6 +415,76 @@ async def test_video_generation(
             "success": False,
             "error": str(e)
         }
+
+@router.get("/list-videos")
+async def list_videos():
+    """List all generated videos"""
+    try:
+        video_dir = Path("frontend/uploads/videos")
+        if not video_dir.exists():
+            return {"videos": [], "count": 0}
+        
+        videos = []
+        for video_file in video_dir.glob("*.mp4"):
+            stat = video_file.stat()
+            videos.append({
+                "filename": video_file.name,
+                "path": f"/uploads/videos/{video_file.name}",
+                "size_mb": round(stat.st_size / (1024*1024), 2),
+                "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "duration": "Unknown"  # เพิ่ม video duration detection ในอนาคต
+            })
+        
+        videos.sort(key=lambda x: x["created"], reverse=True)
+        return {"videos": videos, "count": len(videos)}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list videos: {str(e)}")
+
+@router.delete("/delete-video/{filename}")
+async def delete_video(filename: str):
+    """Delete a video file"""
+    try:
+        video_path = Path(f"frontend/uploads/videos/{filename}")
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        if not filename.endswith('.mp4'):
+            raise HTTPException(status_code=400, detail="Invalid file type")
+        
+        video_path.unlink()
+        return {"message": f"Video {filename} deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete video: {str(e)}")
+
+@router.post("/play-video/{filename}")
+async def play_video(filename: str):
+    """Play video on display server"""
+    try:
+        video_path = Path(f"frontend/uploads/videos/{filename}")
+        if not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        # Update content display with video
+        from app.services.content_display_service import content_display_service
+        
+        await content_display_service.update_content({
+            "type": "video",
+            "video_path": f"/uploads/videos/{filename}",
+            "title": filename.replace('.mp4', '').replace('_', ' ').title(),
+            "status": "playing"
+        })
+        
+        return {"message": f"Playing video: {filename}", "video_path": f"/uploads/videos/{filename}"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to play video: {str(e)}")
+
 
 async def test_video_task(product_id: int, mock_script: dict, db: Session):
     """Background task สำหรับทดสอบ"""

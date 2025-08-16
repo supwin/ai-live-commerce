@@ -1,0 +1,148 @@
+<!--frontend/video_manager/index.html-->
+
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Video Manager - AI Live Commerce</title>
+    <link rel="stylesheet" href="/static/css/video-manager.css">
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎬 Video Manager</h1>
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="generateNewVideo()">
+                    ✨ Generate New Video
+                </button>
+                <button class="btn btn-secondary" onclick="refreshVideoList()">
+                    🔄 Refresh
+                </button>
+                <a href="/" class="btn btn-outline">← Dashboard</a>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Video Generation Panel -->
+            <div class="panel generation-panel">
+                <h2>🤖 AI Video Generation</h2>
+
+                <div class="form-group">
+                    <label for="productName">Product Name:</label>
+                    <input type="text" id="productName" placeholder="Enter product name" value="AI Smart Camera Pro 4K">
+                </div>
+
+                <div class="form-group">
+                    <label for="productPrice">Price:</label>
+                    <input type="text" id="productPrice" placeholder="฿0,000" value="฿12,990">
+                </div>
+
+                <div class="form-group">
+                    <label for="productDescription">Description:</label>
+                    <textarea id="productDescription"
+                        placeholder="Product description">Professional 4K AI Camera with Smart Features. Perfect for content creators and professionals.</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="videoStyle">Video Style:</label>
+                    <select id="videoStyle">
+                        <option value="slideshow">📸 Slideshow</option>
+                        <option value="animated_text">📝 Animated Text</option>
+                        <option value="product_showcase">🎁 Product Showcase</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="customScript">Custom Script (Optional):</label>
+                    <textarea id="customScript" placeholder="Leave empty for AI-generated script"></textarea>
+                </div>
+
+                <button class="btn btn-primary btn-large" onclick="generateVideo()" id="generateBtn">
+                    🎬 Generate Video
+                </button>
+
+                <div class="generation-status" id="generationStatus" style="display: none;">
+                    <div class="spinner"></div>
+                    <span id="statusText">Generating video...</span>
+                </div>
+            </div>
+
+            <!-- Video List Panel -->
+            <div class="panel video-list-panel">
+                <h2>📁 Video Library</h2>
+
+                <div class="list-controls">
+                    <input type="text" id="searchBox" placeholder="🔍 Search videos..." onkeyup="filterVideos()">
+                    <select id="sortBy" onchange="sortVideos()">
+                        <option value="newest">📅 Newest First</option>
+                        <option value="oldest">📅 Oldest First</option>
+                        <option value="name">📝 Name A-Z</option>
+                        <option value="size">📊 File Size</option>
+                    </select>
+                </div>
+
+                <div class="video-grid" id="videoGrid">
+                    <div class="loading-placeholder">
+                        <div class="spinner"></div>
+                        <p>Loading videos...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Video Preview Modal -->
+        <div class="modal" id="previewModal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modalTitle">Video Preview</h3>
+                    <button class="modal-close" onclick="closePreview()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <video id="previewVideo" controls style="width: 100%; max-height: 70vh;">
+                        <source src="" type="video/mp4">
+                    </video>
+                    <div class="video-actions">
+                        <button class="btn btn-primary" onclick="playOnDisplay()" id="playBtn">
+                            📺 Play on Display
+                        </button>
+                        <button class="btn btn-danger" onclick="deleteVideo()" id="deleteBtn">
+                            🗑️ Delete Video
+                        </button>
+                        <button class="btn btn-secondary" onclick="downloadVideo()" id="downloadBtn">
+                            💾 Download
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Display Status Panel -->
+        <div class="status-panel">
+            <h3>📺 Display Status</h3>
+            <div class="status-item">
+                <span>Server:</span>
+                <span id="serverStatus" class="status-indicator">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span>Mobile View:</span>
+                <a href="http://localhost:8080/mobile" target="_blank" id="mobileLink">
+                    📱 Open Mobile Display
+                </a>
+            </div>
+            <div class="status-item">
+                <span>Connections:</span>
+                <span id="connectionCount">0</span>
+            </div>
+            <button class="btn btn-secondary btn-small" onclick="startDisplayServer()">
+                🚀 Start Display Server
+            </button>
+        </div>
+    </div>
+
+    <script src="/static/js/video-manager.js"></script>
+</body>
+
+</html>

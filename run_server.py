@@ -10,6 +10,8 @@ import time
 import psutil
 import uvicorn
 import asyncio
+import signal
+import socket
 from pathlib import Path
 from datetime import datetime
 
@@ -49,16 +51,31 @@ if enhanced_tts_service:
     tts_status = enhanced_tts_service.get_provider_status()
     print(f"   Available providers: {[p for p, s in tts_status.items() if s['available']]}")
     print(f"   Recommended provider: {enhanced_tts_service.get_recommended_provider()}")
-    
-    
+
 # Global variables for monitoring
 start_time = datetime.utcnow()
 request_count = 0
+
+def is_port_in_use(port: int) -> bool:
+    """ตรวจสอบว่า port ถูกใช้งานอยู่หรือไม่"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('localhost', port))
+            return False
+        except OSError:
+            return True
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     
+    print("""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    🤖 AI LIVE COMMERCE PLATFORM 🎬                           ║
+║                         Video Generation + Mobile Capture                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+""")
+
     print("🚀 Starting AI Live Commerce Platform...")
     
     # Print startup information
@@ -90,6 +107,7 @@ async def lifespan(app: FastAPI):
         "frontend/uploads/images",
         "frontend/uploads/videos", 
         "frontend/static/audio",
+        "frontend/video_manager",
         "logs"
     ]
     
@@ -123,6 +141,21 @@ async def lifespan(app: FastAPI):
                     print(f"   ✅ {name.capitalize()}: {voices} voices, {config['quality']} quality")
         except Exception as e:
             print(f"   ⚠️ TTS test failed: {e}")    
+
+    # Check if display server port is available
+    print("\n🔍 Checking display server availability...")
+    try:
+        if is_port_in_use(8080):
+            print("   ⚠️  Port 8080 in use - Display server may already be running")
+            print("   📺 Display pages: http://localhost:8080/mobile")
+        else:
+            print("   ✅ Port 8080 available for display server")
+            print("   💡 Run start command to activate display server")
+        print("   🚀 Start command: curl -X POST http://localhost:8000/api/v1/content-display/start-server")
+    except Exception as e:
+        print(f"   ⚠️ Could not check port: {e}")
+        print("   💡 Run start command to activate display server")
+        print("   🚀 Start command: curl -X POST http://localhost:8000/api/v1/content-display/start-server")
     
     # Calculate startup time and memory usage
     startup_duration = (datetime.utcnow() - start_time).total_seconds()
@@ -131,10 +164,25 @@ async def lifespan(app: FastAPI):
     print("\n" + "=" * 80)
     print("🎉 AI Live Commerce Platform Ready!")
     print("=" * 80)
-    print(f"📱 Dashboard: http://localhost:{get_settings().PORT}")
-    print(f"📚 API Docs: http://localhost:{get_settings().PORT}/docs")  
-    print(f"🔧 Health Check: http://localhost:{get_settings().PORT}/api/health")
-    print(f"📊 System Info: http://localhost:{get_settings().PORT}/api/system/info")
+    print("🎛️ MAIN CONTROL PANEL:")
+    print(f"   📱 Dashboard: http://localhost:{get_settings().PORT}")
+    print(f"   🎬 Video Manager: http://localhost:{get_settings().PORT}/video-manager")
+    print(f"   📚 API Docs: http://localhost:{get_settings().PORT}/docs")
+    print("")
+    print("📺 DISPLAY PAGES (for mobile capture):")
+    print("   🖥️  Main Display: http://localhost:8080/")
+    print("   📱 Mobile Display: http://localhost:8080/mobile")
+    print("   🔳 Fullscreen: http://localhost:8080/fullscreen")
+    print("")
+    print("🔧 SYSTEM MONITORING:")
+    print(f"   🏥 Health Check: http://localhost:{get_settings().PORT}/api/health")
+    print(f"   📊 System Info: http://localhost:{get_settings().PORT}/api/system/info")
+    print("=" * 80)
+    print("🚀 QUICK START GUIDE:")
+    print("   1. Start Display Server: curl -X POST http://localhost:8000/api/v1/content-display/start-server")
+    print("   2. Generate Video: Open http://localhost:8000/video-manager")
+    print("   3. Mobile Capture: Open http://localhost:8080/mobile on your phone")
+    print("   4. TikTok Live: Point phone camera at mobile display")
     print("=" * 80)
     print(f"⚡ Startup time: {startup_duration:.2f}s")
     print(f"💾 Memory usage: {memory_usage:.1f}MB")
@@ -145,13 +193,35 @@ async def lifespan(app: FastAPI):
     
     # Cleanup on shutdown
     print("\n🛑 Shutting down AI Live Commerce Platform...")
-    print("✅ Cleanup completed")
+    try:
+        # Stop display server if running
+        try:
+            from app.services.content_display_service import content_display_service
+            if content_display_service.is_running:
+                await content_display_service.stop_display_server()
+                print("   ✅ Display server stopped")
+            
+            # Close all WebSocket connections
+            if hasattr(content_display_service, 'active_connections'):
+                for connection in content_display_service.active_connections.copy():
+                    try:
+                        await connection.close()
+                    except:
+                        pass
+                content_display_service.active_connections.clear()
+                print("   ✅ WebSocket connections closed")
+        except ImportError:
+            print("   ℹ️ Content display service was not loaded")
+        
+        print("✅ Cleanup completed")
+    except Exception as e:
+        print(f"⚠️ Cleanup warning: {e}")
 
 # Initialize FastAPI app
 app = FastAPI(
     title="AI Live Commerce Platform",
     description="Advanced AI-powered live commerce platform with real-time script generation",
-    version="2.0.0",
+    version="2.5.0",
     lifespan=lifespan
 )
 
@@ -190,28 +260,49 @@ async def count_requests(request: Request, call_next):
 # Mount static files
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 app.mount("/uploads", StaticFiles(directory="frontend/uploads"), name="uploads")
+app.mount("/video-manager", StaticFiles(directory="frontend/video_manager"), name="video_manager")
 
 # Include API routers
 app.include_router(dashboard_router, prefix="/api/v1", tags=["Dashboard"])
-from app.api.v1.tts import router as tts_router
-app.include_router(tts_router, prefix="/api/v1", tags=["Thai TTS"])
 
-from app.api.v1.mobile_live import router as mobile_live_router
-app.include_router(mobile_live_router, prefix="/api/v1", tags=["Mobile Live"])
+# TTS Router
+try:
+    from app.api.v1.tts import router as tts_router
+    app.include_router(tts_router, prefix="/api/v1", tags=["Thai TTS"])
+    print("✅ TTS API loaded")
+except ImportError as e:
+    print(f"⚠️ TTS API not loaded: {e}")
 
+# Mobile Live Router  
+try:
+    from app.api.v1.mobile_live import router as mobile_live_router
+    app.include_router(mobile_live_router, prefix="/api/v1", tags=["Mobile Live"])
+    print("✅ Mobile Live API loaded")
+except ImportError as e:
+    print(f"⚠️ Mobile Live API not loaded: {e}")
+
+# Video Generation Router
 try:
     from app.api.v1.video_generation import router as video_generation_router
-    app.include_router(video_generation_router, prefix="/api/v1", tags=["Video Generation"])
+    app.include_router(video_generation_router, prefix="/api/v1/video-generation", tags=["Video Generation"])
     print("✅ Video Generation API loaded")
 except ImportError as e:
     print(f"⚠️ Video Generation API not loaded: {e}")
 
+# Content Display Router
 try:
+    print("🔍 Attempting to import Content Display API...")
     from app.api.v1.content_display import router as content_display_router
-    app.include_router(content_display_router, prefix="/api/v1", tags=["Content Display"])
-    print("✅ Content Display API loaded")
+    print("✅ Content Display Router imported successfully")
+    
+    app.include_router(content_display_router, prefix="/api/v1/content-display", tags=["Content Display"])
+    print("✅ Content Display API loaded and registered")
+    
 except ImportError as e:
-    print(f"⚠️ Content Display API not loaded: {e}")
+    print(f"❌ Content Display API import failed: {e}")
+    print(f"   🔍 Check file: app/api/v1/content_display.py")
+except Exception as e:
+    print(f"❌ Content Display API error: {e}")
 
 # Root endpoint - Dashboard
 @app.get("/", response_class=HTMLResponse)
@@ -254,10 +345,10 @@ async def dashboard():
         <div class="cards">
             <div class="card">
                 <h3>🎯 Quick Actions</h3>
+                <p><a href="/video-manager" class="btn">🎬 Video Manager</a></p>
                 <p><a href="/docs" class="btn">📚 API Documentation</a></p>
                 <p><a href="/api/v1/dashboard/stats" class="btn">📊 Dashboard Stats</a></p>
                 <p><a href="/api/v1/dashboard/ai-status" class="btn">🧠 AI Status</a></p>
-                <p><a href="/api/v1/dashboard/test/ai-generation" class="btn">🧪 Test AI</a></p>
             </div>
             
             <div class="card">
@@ -270,19 +361,19 @@ async def dashboard():
             <div class="card">
                 <h3>🚀 Features Available</h3>
                 <ul>
-                    <li>✅ Product Management</li>
+                    <li>✅ Video Generation</li>
+                    <li>✅ Content Display</li>
+                    <li>✅ Mobile Capture</li>
                     <li>✅ AI Script Generation</li>
                     <li>✅ TTS Integration</li>
-                    <li>✅ Dashboard Analytics</li>
-                    <li>✅ Persona Management</li>
                 </ul>
             </div>
             
             <div class="card">
-                <h3>📞 Need Help?</h3>
-                <p>📚 Check the <a href="/docs">API Documentation</a></p>
-                <p>🧪 Run the <a href="/api/v1/dashboard/test/ai-generation">AI Test</a></p>
-                <p>📊 Monitor <a href="/api/system/info">System Health</a></p>
+                <h3>📺 Display URLs</h3>
+                <p><a href="http://localhost:8080/mobile" target="_blank" class="btn">📱 Mobile Display</a></p>
+                <p><a href="http://localhost:8080/fullscreen" target="_blank" class="btn">🔳 Fullscreen</a></p>
+                <p><a href="http://localhost:8080/" target="_blank" class="btn">🖥️ Main Display</a></p>
             </div>
 
             <div class="card">
@@ -291,6 +382,13 @@ async def dashboard():
                 <p><a href="/api/v1/tts/voices" class="btn">🗣️ Available Voices</a></p>
                 <p><a href="/api/v1/tts/status" class="btn">📊 TTS Status</a></p>
                 <p><a href="/docs#/Thai%20TTS" class="btn">📚 TTS API Docs</a></p>
+            </div>
+            
+            <div class="card">
+                <h3>📞 Need Help?</h3>
+                <p>📚 Check the <a href="/docs">API Documentation</a></p>
+                <p>🧪 Run the <a href="/api/v1/dashboard/test/ai-generation">AI Test</a></p>
+                <p>📊 Monitor <a href="/api/system/info">System Health</a></p>
             </div>
         </div>
     </div>
@@ -316,6 +414,50 @@ async def dashboard():
             """)
     except Exception as e:
         return HTMLResponse(content=f"<h1>Error loading dashboard</h1><p>{str(e)}</p>", status_code=500)
+
+@app.get("/video-manager", response_class=HTMLResponse)
+@app.get("/video-manager/", response_class=HTMLResponse)
+async def video_manager():
+    """Video Management UI"""
+    try:
+        video_manager_path = Path("frontend/video_manager/index.html")
+        print(f"🔍 Looking for video manager at: {video_manager_path.absolute()}")
+        
+        if video_manager_path.exists():
+            with open(video_manager_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                print("✅ Video Manager HTML loaded successfully")
+                return HTMLResponse(content=content)
+        else:
+            print(f"❌ Video Manager file not found: {video_manager_path.absolute()}")
+            return HTMLResponse(content=f"""
+<!DOCTYPE html>
+<html>
+<head><title>Video Manager - File Not Found</title></head>
+<body>
+    <h1>🎬 Video Manager</h1>
+    <p>❌ File not found: {video_manager_path.absolute()}</p>
+    <p>Files in directory:</p>
+    <ul>
+        {chr(10).join([f'<li>{f.name}</li>' for f in Path('frontend/video_manager').glob('*') if Path('frontend/video_manager').exists()])}
+    </ul>
+    <p><a href="/">← Back to Dashboard</a></p>
+</body>
+</html>
+            """, status_code=404)
+    except Exception as e:
+        print(f"❌ Error loading Video Manager: {e}")
+        return HTMLResponse(content=f"""
+<!DOCTYPE html>
+<html>
+<head><title>Video Manager - Error</title></head>
+<body>
+    <h1>Error loading Video Manager</h1>
+    <p>{str(e)}</p>
+    <p><a href="/">← Back to Dashboard</a></p>
+</body>
+</html>
+        """, status_code=500)
 
 # Health check endpoints
 @app.get("/api/health")
@@ -366,13 +508,15 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "phase": "Dashboard + AI Integration",
-        "version": "2.0.0",
+        "phase": "Complete Video Management System",
+        "version": "2.5.0",
         "features": {
             "dashboard": "✅ Active",
+            "video_manager": "✅ Active",
+            "content_display": "✅ Active",
             "ai_integration": f"✅ Active ({ai_mode})",
             "tts_system": "✅ Active",
-            "product_management": "✅ Active"
+            "mobile_capture": "✅ Ready"
         },
         "database": {
             "connected": db_connected,
@@ -394,6 +538,14 @@ async def health_check():
             "status": performance_target,
             "memory_target": "< 300MB",
             "startup_target": "< 30 seconds"
+        },
+        "quick_access_urls": {
+            "dashboard": f"http://localhost:{settings.PORT}",
+            "video_manager": f"http://localhost:{settings.PORT}/video-manager",
+            "api_docs": f"http://localhost:{settings.PORT}/docs",
+            "mobile_display": "http://localhost:8080/mobile",
+            "fullscreen_display": "http://localhost:8080/fullscreen",
+            "main_display": "http://localhost:8080/"
         }
     }
 
@@ -406,7 +558,7 @@ async def system_info():
     return {
         "application": {
             "name": "AI Live Commerce Platform", 
-            "version": "2.0.0",
+            "version": "2.5.0",
             "start_time": start_time.isoformat(),
             "uptime_seconds": (datetime.utcnow() - start_time).total_seconds()
         },
@@ -492,6 +644,7 @@ async def not_found_handler(request: Request, exc: HTTPException):
             "path": str(request.url.path),
             "available_endpoints": [
                 "/",
+                "/video-manager",
                 "/docs",
                 "/api/health", 
                 "/api/system/info",
@@ -513,17 +666,27 @@ async def internal_error_handler(request: Request, exc: Exception):
         }
     )
 
+def signal_handler(signum, frame):
+    """Handle Ctrl+C gracefully"""
+    print(f"\n🛑 Received signal {signum}. Shutting down...")
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 def main():
     """Main server entry point"""
     
     try:
         # Print banner
         print("=" * 80)
-        print("🤖 AI Live Commerce Platform - Enhanced Server")
+        print("🤖 AI Live Commerce Platform - Enhanced Server v2.5")
         print("=" * 80)
-        print("🔧 Features: Real OpenAI Integration + Complete Dashboard")
+        print("🔧 Features: Video Generation + Content Display + Mobile Capture")
         print("🎯 Optimized for: Intel Core i7 + 8GB RAM")
-        print("📊 Phase: Dashboard + AI Script Generation")
+        print("📊 Phase: Complete Video Management System")
+        print("🎬 Ready for: TikTok Live Streaming")
         print("=" * 80)
         
         # Run the server
